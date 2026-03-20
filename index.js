@@ -8,7 +8,7 @@ PermissionsBitField,
 EmbedBuilder
 } = require("discord.js");
 
-const mercadopago = require("mercadopago");
+const { MercadoPagoConfig, Payment } = require("mercadopago");
 const express = require("express");
 
 const app = express();
@@ -28,10 +28,14 @@ const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1484365314140541078";
 
-mercadopago.configure({
-access_token: MP_TOKEN
+// MERCADO PAGO NOVO
+const clientMP = new MercadoPagoConfig({
+accessToken: MP_TOKEN
 });
 
+const payment = new Payment(clientMP);
+
+// PRODUTOS
 const PRODUTOS = {
 opt5:{ preco:5, nome:"Básica", link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file" },
 opt10:{ preco:10, nome:"Avançada", link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25B5es_diddy.rar/file" },
@@ -45,7 +49,7 @@ client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// painel
+// PAINEL
 client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 
@@ -64,25 +68,29 @@ msg.channel.send({embeds:[embed],components:[row]});
 }
 });
 
-// clique
+// COMPRA
 client.on("interactionCreate",async interaction=>{
 if(!interaction.isButton())return;
 
 const produto = PRODUTOS[interaction.customId];
 if(!produto)return;
 
-// cria pagamento
-const pagamento = await mercadopago.payment.create({
+// CRIAR PAGAMENTO PIX
+const pagamento = await payment.create({
+body: {
 transaction_amount: produto.preco,
 description: produto.nome,
 payment_method_id: "pix",
-payer: { email: `user${interaction.user.id}@gmail.com` }
+payer: {
+email: `user${interaction.user.id}@gmail.com`
+}
+}
 });
 
-const idPagamento = pagamento.body.id;
+const idPagamento = pagamento.id;
 
-const qr = pagamento.body.point_of_interaction.transaction_data.qr_code_base64;
-const copiaecola = pagamento.body.point_of_interaction.transaction_data.qr_code;
+const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
+const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
 
 // salvar
 pagamentos[idPagamento] = {
@@ -90,7 +98,7 @@ userId: interaction.user.id,
 produto: produto
 };
 
-// criar ticket
+// CRIAR TICKET
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -118,23 +126,25 @@ canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
 interaction.reply({content:`Ticket criado: ${canal}`,ephemeral:true});
 });
 
-// webhook
+// WEBHOOK
 app.post("/webhook", async (req,res)=>{
 
 const data = req.body;
 
 if(data.type === "payment"){
 
-const payment = await mercadopago.payment.findById(data.data.id);
+const pagamentoInfo = await payment.get({
+id: data.data.id
+});
 
-if(payment.body.status === "approved"){
+if(pagamentoInfo.status === "approved"){
 
-const info = pagamentos[payment.body.id];
+const info = pagamentos[pagamentoInfo.id];
 if(!info)return;
 
 const user = await client.users.fetch(info.userId);
 
-// DM cliente
+// DM CLIENTE
 await user.send(`✅ Pagamento aprovado!
 
 📦 Produto: ${info.produto.nome}
@@ -144,7 +154,7 @@ ${info.produto.link}
 🎥 Tutorial:
 https://cdn.discordapp.com/attachments/1468729150071377950/1478085121344143440/bandicam_2026-03-02_14-41-04-216.mp4`);
 
-// LOG DE VENDA
+// LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
 const logEmbed = new EmbedBuilder()
