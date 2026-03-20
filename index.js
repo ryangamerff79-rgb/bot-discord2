@@ -48,7 +48,7 @@ client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// PAINEL BONITO
+// PAINEL
 client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 
@@ -85,7 +85,7 @@ const embed = new EmbedBuilder()
 👇 Clique em um botão para comprar
 `)
 .setColor("Green")
-.setImage("https://cdn.discordapp.com/attachments/1373392385014370334/1483933984965791835/IMG-20260318-WA0011.jpg"); // pode trocar por banner depois
+.setImage("https://cdn.discordapp.com/attachments/1373392385014370334/1484376373916209202/4b754d98-91ab-421e-9032-25001a8d83e9_1.png");
 
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId("opt5").setLabel("Básica").setStyle(ButtonStyle.Primary),
@@ -100,6 +100,9 @@ msg.channel.send({embeds:[embed],components:[row]});
 // COMPRA
 client.on("interactionCreate",async interaction=>{
 if(!interaction.isButton())return;
+
+// evita erro
+await interaction.deferReply({ ephemeral: true });
 
 const produto = PRODUTOS[interaction.customId];
 if(!produto)return;
@@ -125,6 +128,7 @@ userId: interaction.user.id,
 produto: produto
 };
 
+// criar ticket
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -135,6 +139,7 @@ permissionOverwrites:[
 ]
 });
 
+// embed pagamento
 const embed = new EmbedBuilder()
 .setTitle("💳 Pagamento PIX")
 .setDescription(`💰 Produto: ${produto.nome}
@@ -149,7 +154,8 @@ Após pagar, aguarde confirmação automática`)
 
 canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
 
-interaction.reply({content:`Ticket criado: ${canal}`,ephemeral:true});
+// resposta
+interaction.editReply({content:`Ticket criado: ${canal}`});
 });
 
 // WEBHOOK
@@ -170,6 +176,7 @@ if(!info)return;
 
 const user = await client.users.fetch(info.userId);
 
+// DM
 await user.send(`✅ Pagamento aprovado!
 
 📦 Produto: ${info.produto.nome}
@@ -179,6 +186,7 @@ ${info.produto.link}
 🎥 Tutorial:
 https://cdn.discordapp.com/attachments/1468729150071377950/1478085121344143440/bandicam_2026-03-02_14-41-04-216.mp4`);
 
+// LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
 const logEmbed = new EmbedBuilder()
