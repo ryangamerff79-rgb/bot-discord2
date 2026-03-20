@@ -28,7 +28,7 @@ const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1484365314140541078";
 
-// MERCADO PAGO NOVO
+// MERCADO PAGO
 const clientMP = new MercadoPagoConfig({
 accessToken: MP_TOKEN
 });
@@ -42,26 +42,55 @@ opt10:{ preco:10, nome:"Avançada", link:"https://www.mediafire.com/file/98zllqr
 opt20:{ preco:20, nome:"Suprema", link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file" }
 };
 
-// salvar pagamentos
 const pagamentos = {};
 
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// PAINEL
+// PAINEL BONITO
 client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
-.setTitle("🚀 Loja Automática")
-.setDescription("Escolha um produto abaixo:")
-.setColor("Green");
+.setTitle("🚀 Imperial Otimizações")
+.setDescription(`
+🔧 **Otimização Básica — R$5**
+• Limpeza do sistema
+• Remoção de arquivos inúteis
+• Mais leveza e rapidez
+
+💻 Ideal para uso geral
+
+---
+
+⚡ **Otimização Avançada — R$10**
+• Melhor desempenho no Windows
+• Menos input delay
+• FPS mais estável nos jogos
+
+🎮 Ideal para quem joga
+
+---
+
+👑 **Otimização Suprema — R$20**
+• Tudo da básica + avançada
+• Tweaks avançados
+• Máximo desempenho
+
+🚀 Ideal pra extrair tudo do PC
+
+---
+
+👇 Clique em um botão para comprar
+`)
+.setColor("Green")
+.setImage("https://cdn.discordapp.com/attachments/1373392385014370334/1483933984965791835/IMG-20260318-WA0011.jpg"); // pode trocar por banner depois
 
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("opt5").setLabel("R$5").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("opt10").setLabel("R$10").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId("opt20").setLabel("R$20").setStyle(ButtonStyle.Danger)
+new ButtonBuilder().setCustomId("opt5").setLabel("Básica").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("opt10").setLabel("Avançada").setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId("opt20").setLabel("Suprema").setStyle(ButtonStyle.Danger)
 );
 
 msg.channel.send({embeds:[embed],components:[row]});
@@ -75,7 +104,6 @@ if(!interaction.isButton())return;
 const produto = PRODUTOS[interaction.customId];
 if(!produto)return;
 
-// CRIAR PAGAMENTO PIX
 const pagamento = await payment.create({
 body: {
 transaction_amount: produto.preco,
@@ -92,13 +120,11 @@ const idPagamento = pagamento.id;
 const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
 
-// salvar
 pagamentos[idPagamento] = {
 userId: interaction.user.id,
 produto: produto
 };
 
-// CRIAR TICKET
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -110,7 +136,7 @@ permissionOverwrites:[
 });
 
 const embed = new EmbedBuilder()
-.setTitle("💳 PIX")
+.setTitle("💳 Pagamento PIX")
 .setDescription(`💰 Produto: ${produto.nome}
 💰 Valor: R$${produto.preco}
 
@@ -144,7 +170,6 @@ if(!info)return;
 
 const user = await client.users.fetch(info.userId);
 
-// DM CLIENTE
 await user.send(`✅ Pagamento aprovado!
 
 📦 Produto: ${info.produto.nome}
@@ -154,7 +179,6 @@ ${info.produto.link}
 🎥 Tutorial:
 https://cdn.discordapp.com/attachments/1468729150071377950/1478085121344143440/bandicam_2026-03-02_14-41-04-216.mp4`);
 
-// LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
 const logEmbed = new EmbedBuilder()
