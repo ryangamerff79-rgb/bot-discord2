@@ -8,6 +8,12 @@ PermissionsBitField,
 EmbedBuilder
 } = require("discord.js");
 
+const mercadopago = require("mercadopago");
+const express = require("express");
+
+const app = express();
+app.use(express.json());
+
 const client = new Client({
 intents:[
 GatewayIntentBits.Guilds,
@@ -16,180 +22,149 @@ GatewayIntentBits.MessageContent
 ]
 });
 
-// ===== CONFIG =====
-
+// CONFIG
 const TOKEN = process.env.TOKEN;
-
+const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
-const CARGO_PERMITIDO = "1466621093799268443";
+const CANAL_LOGS = "1484365314140541078";
+
+mercadopago.configure({
+access_token: MP_TOKEN
+});
 
 const PRODUTOS = {
-
-opt5:{
-preco:5,
-qrcode:"https://cdn.discordapp.com/attachments/1373392385014370334/1483933984965791835/IMG-20260318-WA0011.jpg",
-link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file"
-},
-
-opt10:{
-preco:10,
-qrcode:"https://cdn.discordapp.com/attachments/1373392385014370334/1483933984562876501/IMG-20260318-WA0012.jpg",
-link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25B5es_diddy.rar/file"
-},
-
-opt20:{
-preco:20,
-qrcode:"https://cdn.discordapp.com/attachments/1373392385014370334/1483933984193908857/IMG-20260318-WA0013.jpg",
-link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file"
-}
-
+opt5:{ preco:5, nome:"Básica", link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file" },
+opt10:{ preco:10, nome:"Avançada", link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25B5es_diddy.rar/file" },
+opt20:{ preco:20, nome:"Suprema", link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file" }
 };
 
-// ==================
+// salvar pagamentos
+const pagamentos = {};
 
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// ===== PAINEL =====
-
+// painel
 client.on("messageCreate",async msg=>{
-
 if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
-.setTitle("🚀 Loja de Otimizações")
-.setDescription(`
-🔧 Básica — R$5
-⚡ Avançada — R$10
-🔥 Suprema — R$20
-
-Clique no botão abaixo para comprar
-`)
+.setTitle("🚀 Loja Automática")
+.setDescription("Escolha um produto abaixo:")
 .setColor("Green");
 
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("opt5").setLabel("Básica").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("opt10").setLabel("Avançada").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId("opt20").setLabel("Suprema").setStyle(ButtonStyle.Danger)
+new ButtonBuilder().setCustomId("opt5").setLabel("R$5").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("opt10").setLabel("R$10").setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId("opt20").setLabel("R$20").setStyle(ButtonStyle.Danger)
 );
 
-msg.channel.send({
-embeds:[embed],
-components:[row]
-});
-
+msg.channel.send({embeds:[embed],components:[row]});
 }
-
 });
 
-// ===== BOTÕES =====
-
+// clique
 client.on("interactionCreate",async interaction=>{
-
 if(!interaction.isButton())return;
 
 const produto = PRODUTOS[interaction.customId];
 if(!produto)return;
 
-// CRIAR TICKET
+// cria pagamento
+const pagamento = await mercadopago.payment.create({
+transaction_amount: produto.preco,
+description: produto.nome,
+payment_method_id: "pix",
+payer: { email: `user${interaction.user.id}@gmail.com` }
+});
+
+const idPagamento = pagamento.body.id;
+
+const qr = pagamento.body.point_of_interaction.transaction_data.qr_code_base64;
+const copiaecola = pagamento.body.point_of_interaction.transaction_data.qr_code;
+
+// salvar
+pagamentos[idPagamento] = {
+userId: interaction.user.id,
+produto: produto
+};
+
+// criar ticket
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
 parent:CATEGORIA_ID,
 permissionOverwrites:[
-{
-id:interaction.guild.id,
-deny:[PermissionsBitField.Flags.ViewChannel]
-},
-{
-id:interaction.user.id,
-allow:[PermissionsBitField.Flags.ViewChannel]
-}
+{ id:interaction.guild.id, deny:[PermissionsBitField.Flags.ViewChannel] },
+{ id:interaction.user.id, allow:[PermissionsBitField.Flags.ViewChannel] }
 ]
 });
 
 const embed = new EmbedBuilder()
-.setTitle("💳 Pagamento PIX")
-.setDescription(`
-💰 Valor: **R$${produto.preco}**
+.setTitle("💳 PIX")
+.setDescription(`💰 Produto: ${produto.nome}
+💰 Valor: R$${produto.preco}
 
-Escaneie o QR Code abaixo para pagar.
+🔑 Copia e cola:
+${copiaecola}
 
-Depois aguarde um STAFF confirmar o pagamento.
-`)
-.setImage(produto.qrcode)
+Após pagar, aguarde confirmação automática`)
+.setImage(`data:image/png;base64,${qr}`)
 .setColor("Green");
 
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder()
-.setCustomId(`confirmar_${interaction.customId}`)
-.setLabel("Confirmar Pagamento")
-.setStyle(ButtonStyle.Success)
-);
+canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
 
-canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row]
+interaction.reply({content:`Ticket criado: ${canal}`,ephemeral:true});
 });
 
-interaction.reply({
-content:`Ticket criado: ${canal}`,
-ephemeral:true
-});
+// webhook
+app.post("/webhook", async (req,res)=>{
 
-});
+const data = req.body;
 
-// ===== CONFIRMAR PAGAMENTO (SÓ STAFF) =====
+if(data.type === "payment"){
 
-client.on("interactionCreate", async interaction => {
+const payment = await mercadopago.payment.findById(data.data.id);
 
-if (!interaction.isButton()) return;
+if(payment.body.status === "approved"){
 
-if (!interaction.customId.startsWith("confirmar_")) return;
+const info = pagamentos[payment.body.id];
+if(!info)return;
 
-// VERIFICA CARGO
-if (!interaction.member.roles.cache.has(CARGO_PERMITIDO)) {
-return interaction.reply({
-content: "❌ Você não pode confirmar pagamentos!",
-ephemeral: true
-});
-}
+const user = await client.users.fetch(info.userId);
 
-// IDENTIFICA PRODUTO
-const idProduto = interaction.customId.split("_")[1];
-const produto = PRODUTOS[idProduto];
+// DM cliente
+await user.send(`✅ Pagamento aprovado!
 
-if (!produto) return;
-
-const usuario = interaction.user;
-
-// ENVIA NA DM
-await usuario.send(`
-✅ Pagamento confirmado!
-
-📦 Sua otimização:
-${produto.link}
+📦 Produto: ${info.produto.nome}
+📦 Download:
+${info.produto.link}
 
 🎥 Tutorial:
-https://cdn.discordapp.com/attachments/1468729150071377950/1478085121344143440/bandicam_2026-03-02_14-41-04-216.mp4
+https://cdn.discordapp.com/attachments/1468729150071377950/1478085121344143440/bandicam_2026-03-02_14-41-04-216.mp4`);
 
-Obrigado pela compra!
-`);
+// LOG DE VENDA
+const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-interaction.channel.send("✅ Produto enviado na DM!");
+const logEmbed = new EmbedBuilder()
+.setTitle("💰 Nova Venda")
+.addFields(
+{ name:"Cliente", value:`<@${info.userId}>`, inline:true },
+{ name:"Produto", value:info.produto.nome, inline:true },
+{ name:"Valor", value:`R$${info.produto.preco}`, inline:true }
+)
+.setColor("Green")
+.setTimestamp();
 
-// FECHA TICKET
-setTimeout(()=>{
-interaction.channel.send("🔒 Fechando ticket...");
-setTimeout(()=>{
-interaction.channel.delete();
-},4000);
-},4000);
+canalLogs.send({embeds:[logEmbed]});
 
+}
+}
+
+res.sendStatus(200);
 });
 
-// ===== LOGIN =====
+app.listen(3000);
 
 client.login(TOKEN);
