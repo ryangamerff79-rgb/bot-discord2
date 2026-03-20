@@ -43,6 +43,7 @@ opt20:{ preco:20, nome:"Suprema", link:"https://www.mediafire.com/file/ui6oxugqq
 };
 
 const pagamentos = {};
+const pagamentosAprovados = new Set();
 
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
@@ -55,34 +56,16 @@ if(msg.content === "!painel"){
 const embed = new EmbedBuilder()
 .setTitle("🚀 Imperial Otimizações")
 .setDescription(`
-🔧 **Otimização Básica — R$5**
-• Limpeza do sistema
-• Remoção de arquivos inúteis
-• Mais leveza e rapidez
+🔧 **Básica — R$5**
+Limpeza e mais leveza
 
-💻 Ideal para uso geral
+⚡ **Avançada — R$10**
+Mais FPS e desempenho
 
----
+👑 **Suprema — R$20**
+Máximo desempenho
 
-⚡ **Otimização Avançada — R$10**
-• Melhor desempenho no Windows
-• Menos input delay
-• FPS mais estável nos jogos
-
-🎮 Ideal para quem joga
-
----
-
-👑 **Otimização Suprema — R$20**
-• Tudo da básica + avançada
-• Tweaks avançados
-• Máximo desempenho
-
-🚀 Ideal pra extrair tudo do PC
-
----
-
-👇 Clique em um botão para comprar
+👇 Clique abaixo para comprar
 `)
 .setColor("Green")
 .setImage("https://cdn.discordapp.com/attachments/1373392385014370334/1484376373916209202/4b754d98-91ab-421e-9032-25001a8d83e9_1.png");
@@ -97,15 +80,57 @@ msg.channel.send({embeds:[embed],components:[row]});
 }
 });
 
-// COMPRA
+// INTERAÇÕES
 client.on("interactionCreate",async interaction=>{
-if(!interaction.isButton())return;
+if(!interaction.isButton()) return;
 
-// evita erro
-await interaction.deferReply({ ephemeral: true });
+// BOTÃO "JÁ PAGUEI"
+if(interaction.customId.startsWith("check_")){
+
+await interaction.deferReply({ flags: 64 });
+
+const id = interaction.customId.split("_")[1];
+
+const pagamentoInfo = await payment.get({ id });
+
+if(pagamentoInfo.status === "approved"){
+
+const info = pagamentos[id];
+if(!info) return interaction.editReply("❌ Pagamento não encontrado");
+
+if(pagamentosAprovados.has(id)){
+return interaction.editReply("⚠️ Já foi aprovado");
+}
+
+pagamentosAprovados.add(id);
+
+const user = await client.users.fetch(info.userId);
+
+await user.send(`✅ Pagamento confirmado!
+
+📦 Produto: ${info.produto.nome}
+📦 Download:
+${info.produto.link}`);
+
+const canal = await client.channels.fetch(info.canalId).catch(()=>null);
+
+if(canal){
+canal.send("✅ Pagamento aprovado! Ticket será fechado...");
+setTimeout(()=> canal.delete().catch(()=>{}), 5000);
+}
+
+return interaction.editReply("✅ Pagamento confirmado!");
+
+}else{
+return interaction.editReply("❌ Ainda não foi pago");
+}
+}
+
+// COMPRA
+await interaction.deferReply({ flags: 64 });
 
 const produto = PRODUTOS[interaction.customId];
-if(!produto)return;
+if(!produto) return;
 
 const pagamento = await payment.create({
 body: {
@@ -114,7 +139,8 @@ description: produto.nome,
 payment_method_id: "pix",
 payer: {
 email: `user${interaction.user.id}@gmail.com`
-}
+},
+external_reference: `${interaction.user.id}-${Date.now()}`
 }
 });
 
@@ -125,7 +151,9 @@ const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
 
 pagamentos[idPagamento] = {
 userId: interaction.user.id,
-produto: produto
+produto: produto,
+canalId: null,
+expira: Date.now() + 1000 * 60 * 15
 };
 
 // criar ticket
@@ -139,73 +167,125 @@ permissionOverwrites:[
 ]
 });
 
-// embed pagamento
+pagamentos[idPagamento].canalId = canal.id;
+
+// embed
 const embed = new EmbedBuilder()
 .setTitle("💳 Pagamento PIX")
 .setDescription(`💰 Produto: ${produto.nome}
 💰 Valor: R$${produto.preco}
 
-🔑 Copia e cola:
+🔑 Copia e cola PIX:
+\`\`\`
 ${copiaecola}
+\`\`\`
 
-Após pagar, aguarde confirmação automática`)
-.setImage(`data:image/png;base64,${qr}`)
+📱 Escaneie o QR Code abaixo
+
+Após pagar, clique em "Já paguei"`)
 .setColor("Green");
 
-canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
+// botão check
+const rowCheck = new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setCustomId(`check_${idPagamento}`)
+.setLabel("Já paguei")
+.setStyle(ButtonStyle.Success)
+);
 
-// resposta
-interaction.editReply({content:`Ticket criado: ${canal}`});
+// qr imagem
+const buffer = Buffer.from(qr, "base64");
+
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[rowCheck],
+files:[{
+attachment: buffer,
+name: "qrcode.png"
+}]
 });
 
-// WEBHOOK
+interaction.editReply({content:`✅ Ticket criado: ${canal}`});
+});
+
+// WEBHOOK PRO
 app.post("/webhook", async (req,res)=>{
+
+try{
 
 const data = req.body;
 
-if(data.type === "payment"){
+if(data.type !== "payment") return res.sendStatus(200);
 
 const pagamentoInfo = await payment.get({
 id: data.data.id
 });
 
-if(pagamentoInfo.status === "approved"){
-
 const info = pagamentos[pagamentoInfo.id];
-if(!info)return;
+if(!info) return res.sendStatus(200);
+
+if(pagamentosAprovados.has(pagamentoInfo.id)){
+return res.sendStatus(200);
+}
+
+if(pagamentoInfo.status !== "approved"){
+return res.sendStatus(200);
+}
+
+if(Date.now() > info.expira){
+return res.sendStatus(200);
+}
+
+pagamentosAprovados.add(pagamentoInfo.id);
 
 const user = await client.users.fetch(info.userId);
 
-// DM
 await user.send(`✅ Pagamento aprovado!
 
 📦 Produto: ${info.produto.nome}
 📦 Download:
-${info.produto.link}
+${info.produto.link}`);
 
-🎥 Tutorial:
-https://cdn.discordapp.com/attachments/1468729150071377950/1478085121344143440/bandicam_2026-03-02_14-41-04-216.mp4`);
-
-// LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-const logEmbed = new EmbedBuilder()
-.setTitle("💰 Nova Venda")
-.addFields(
-{ name:"Cliente", value:`<@${info.userId}>`, inline:true },
-{ name:"Produto", value:info.produto.nome, inline:true },
-{ name:"Valor", value:`R$${info.produto.preco}`, inline:true }
-)
-.setColor("Green")
-.setTimestamp();
+canalLogs.send(`💰 Venda: <@${info.userId}> - ${info.produto.nome}`);
 
-canalLogs.send({embeds:[logEmbed]});
+const canal = await client.channels.fetch(info.canalId).catch(()=>null);
 
+if(canal){
+canal.send("✅ Pagamento aprovado! Ticket será fechado...");
+setTimeout(()=> canal.delete().catch(()=>{}), 5000);
 }
+
+}catch(err){
+console.log("ERRO WEBHOOK:", err);
 }
 
 res.sendStatus(200);
 });
+
+// EXPIRAÇÃO
+setInterval(()=>{
+
+for(const id in pagamentos){
+
+const p = pagamentos[id];
+
+if(Date.now() > p.expira){
+
+client.channels.fetch(p.canalId).then(canal=>{
+if(canal){
+canal.send("⏰ Pagamento expirado, fechando ticket...");
+setTimeout(()=> canal.delete().catch(()=>{}), 5000);
+}
+}).catch(()=>{});
+
+delete pagamentos[id];
+}
+}
+
+}, 60000);
 
 app.listen(3000);
 
