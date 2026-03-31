@@ -32,7 +32,6 @@ const CANAL_LOGS = "1484365314140541078";
 const clientMP = new MercadoPagoConfig({
 accessToken: MP_TOKEN
 });
-
 const payment = new Payment(clientMP);
 
 // PRODUTOS
@@ -45,7 +44,7 @@ gta:{ preco:5, nome:"Conta GTA V Steam", tipo:"conta" },
 sensi:{ preco:5, nome:"Pack Sensi PRO", tipo:"sensi", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
-// CONTAS INFINITAS
+// CONTAS GTA (INFINITO)
 const CONTAS = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -75,7 +74,7 @@ const embed = new EmbedBuilder()
 ⚡ Avançada — R$10
 👑 Suprema — R$20
 
-💻 Aumente FPS, reduza travamentos e deixe seu PC voando!
+💻 Aumente FPS e desempenho!
 `)
 .setColor("Green");
 
@@ -94,20 +93,18 @@ client.on("messageCreate",async msg=>{
 if(msg.content === "!painelgta"){
 
 const embed = new EmbedBuilder()
-.setTitle("🎮 CONTAS GTA V STEAM")
+.setTitle("🎮 CONTAS GTA V")
 .setDescription(`
 🔥 ENTREGA AUTOMÁTICA
-🔥 CONTA COM GTA INSTALÁVEL
+🔥 CONTA COM GTA
 🔥 ACESSO IMEDIATO
 
-💰 Apenas R$5
-
-⚠️ Receba sua conta na hora após o pagamento
+💰 R$5
 `)
 .setColor("Blue");
 
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("gta").setLabel("Comprar GTA V").setStyle(ButtonStyle.Success)
+new ButtonBuilder().setCustomId("gta").setLabel("Comprar GTA").setStyle(ButtonStyle.Success)
 );
 
 msg.channel.send({embeds:[embed],components:[row]});
@@ -119,15 +116,12 @@ client.on("messageCreate",async msg=>{
 if(msg.content === "!painelsensi"){
 
 const embed = new EmbedBuilder()
-.setTitle("🎯 PACK SENSI PRO")
+.setTitle("🎯 PACK SENSI")
 .setDescription(`
 🔥 MELHORE SUA MIRA
-🔥 CONFIG PRO PLAYER
-🔥 MAIS PRECISÃO
+🔥 CONFIG PRO
 
-💰 Apenas R$5
-
-🚀 Ideal para subir de nível rápido
+💰 R$5
 `)
 .setColor("Purple");
 
@@ -141,43 +135,60 @@ msg.channel.send({embeds:[embed],components:[row]});
 
 // ================= COMPRA =================
 
-client.on("interactionCreate",async interaction=>{
-if(!interaction.isButton())return;
+client.on("interactionCreate", async interaction => {
+if (!interaction.isButton()) return;
+
+// botão já paguei
+if(interaction.customId.startsWith("check_")){
+const idPagamento = interaction.customId.split("_")[1];
+
+const pagamentoInfo = await payment.get({ id: idPagamento });
+
+if(pagamentoInfo.status === "approved"){
+await interaction.reply({ content:"✅ Pagamento aprovado!", ephemeral:true });
+}else{
+await interaction.reply({ content:"⏳ Ainda não aprovado.", ephemeral:true });
+}
+return;
+}
 
 await interaction.deferReply({ ephemeral:true });
 
 const produto = PRODUTOS[interaction.customId];
-if(!produto)return;
+if (!produto) return;
 
-const pagamento = await payment.create({
-body:{
+const pagamentoMP = await payment.create({
+body: {
 transaction_amount: produto.preco,
 description: produto.nome,
-payment_method_id:"pix",
-payer:{ email:`user${interaction.user.id}@gmail.com` }
+payment_method_id: "pix",
+payer: { email: `user${interaction.user.id}@gmail.com` }
 }
 });
 
-const idPagamento = pagamento.id;
-const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
+const idPagamento = pagamentoMP.id;
+const copiaecola = pagamentoMP.point_of_interaction.transaction_data.qr_code;
 
 pagamentos[idPagamento] = {
 userId: interaction.user.id,
-produto: produto
+produto: produto,
+canalId: null
 };
 
 // cria ticket
 const canal = await interaction.guild.channels.create({
-name:`ticket-${interaction.user.username}`,
-type:0,
-parent:CATEGORIA_ID,
-permissionOverwrites:[
-{ id:interaction.guild.id, deny:[PermissionsBitField.Flags.ViewChannel] },
-{ id:interaction.user.id, allow:[PermissionsBitField.Flags.ViewChannel] }
+name: `ticket-${interaction.user.username}`,
+type: 0,
+parent: CATEGORIA_ID,
+permissionOverwrites: [
+{ id: interaction.guild.id, deny: [PermissionsBitField.Flags.ViewChannel] },
+{ id: interaction.user.id, allow: [PermissionsBitField.Flags.ViewChannel] }
 ]
 });
 
-// embed pagamento
+pagamentos[idPagamento].canalId = canal.id;
+
+// embed
 const embed = new EmbedBuilder()
 .setTitle("💳 Pagamento PIX")
 .setDescription(`
@@ -187,13 +198,46 @@ const embed = new EmbedBuilder()
 🔑 Copia e cola:
 ${copiaecola}
 
-⏳ Após pagar, aguarde confirmação automática
+⏳ Expira em 10 minutos
 `)
 .setColor("Green");
 
-canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setCustomId(`check_${idPagamento}`)
+.setLabel("Já paguei")
+.setStyle(ButtonStyle.Success)
+);
 
-interaction.editReply({content:`✅ Ticket criado: ${canal}`});
+// QR só otimização
+if(produto.tipo === "otimizacao"){
+const qr = pagamentoMP.point_of_interaction.transaction_data.qr_code_base64;
+const buffer = Buffer.from(qr, "base64");
+
+canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row],
+files:[{ attachment: buffer, name: "qrcode.png" }]
+});
+}else{
+canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row]
+});
+}
+
+// auto delete
+setTimeout(async ()=>{
+try{
+await canal.send("⏰ Tempo expirado!");
+setTimeout(()=> canal.delete().catch(()=>{}), 5000);
+}catch{}
+}, 600000);
+
+interaction.editReply({ content: `✅ Ticket criado: ${canal}` });
+
 });
 
 // ================= WEBHOOK =================
@@ -211,23 +255,21 @@ id: data.data.id
 if(pagamentoInfo.status === "approved"){
 
 const info = pagamentos[pagamentoInfo.id];
-if(!info)return;
+if(!info) return;
 
 const user = await client.users.fetch(info.userId);
 
 let mensagem = `✅ Pagamento aprovado!\n\n📦 Produto: ${info.produto.nome}\n\n`;
 
-// ENTREGA
 if(info.produto.tipo === "otimizacao" || info.produto.tipo === "sensi"){
 mensagem += `📥 Download:\n${info.produto.link}`;
 }
 
 if(info.produto.tipo === "conta"){
 const conta = CONTAS[Math.floor(Math.random()*CONTAS.length)];
-mensagem += `🎮 Conta GTA V:\n${conta}`;
+mensagem += `🎮 Conta:\n${conta}`;
 }
 
-// ENVIA DM
 await user.send(mensagem);
 
 // LOG
@@ -244,6 +286,15 @@ const logEmbed = new EmbedBuilder()
 .setTimestamp();
 
 canalLogs.send({embeds:[logEmbed]});
+
+// deletar ticket
+if(info.canalId){
+const canal = await client.channels.fetch(info.canalId).catch(()=>null);
+if(canal){
+await canal.send("✅ Pagamento aprovado! Fechando...");
+setTimeout(()=> canal.delete().catch(()=>{}), 5000);
+}
+}
 
 }
 }
