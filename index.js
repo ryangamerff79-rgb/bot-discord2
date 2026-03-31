@@ -93,17 +93,16 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Comprar").setStyle(3)
 });
 }
 
-// ADMIN
 if(msg.content === "!admin"){
 if(!msg.member.roles.cache.has(CARGO_ADM)) return;
 
 msg.channel.send({
 embeds:[new EmbedBuilder().setTitle("🛠️ PAINEL ADMIN").setColor("Red")],
 components:[new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("forcar").setLabel("⚡ Forçar Entrega").setStyle(3),
-new ButtonBuilder().setCustomId("vendas").setLabel("📊 Vendas").setStyle(1),
-new ButtonBuilder().setCustomId("banir").setLabel("🚫 Banir").setStyle(4),
-new ButtonBuilder().setCustomId("desbanir").setLabel("✅ Desbanir").setStyle(2)
+new ButtonBuilder().setCustomId("admin_forcar").setLabel("⚡ Forçar Entrega").setStyle(3),
+new ButtonBuilder().setCustomId("admin_vendas").setLabel("📊 Vendas").setStyle(1),
+new ButtonBuilder().setCustomId("admin_banir").setLabel("🚫 Banir").setStyle(4),
+new ButtonBuilder().setCustomId("admin_desbanir").setLabel("✅ Desbanir").setStyle(2)
 )]
 });
 }
@@ -117,29 +116,35 @@ client.on("interactionCreate", async interaction=>{
 
 if(!interaction.isButton()) return;
 
-// bloqueio
+// ================= ANTI BAN =================
 if(banidos.has(interaction.user.id)){
 return interaction.reply({ephemeral:true,content:"🚫 Você está bloqueado"});
 }
 
-// ADMIN
-if(interaction.customId === "vendas"){
-return interaction.reply({ephemeral:true,content:`💰 Vendas: ${vendas}`});
+// ================= ADMIN =================
+if(interaction.customId.startsWith("admin_")){
+
+if(!interaction.member.roles.cache.has(CARGO_ADM)){
+return interaction.reply({ephemeral:true,content:"❌ Sem permissão"});
 }
 
-if(interaction.customId === "banir"){
+if(interaction.customId === "admin_vendas"){
+return interaction.reply({ephemeral:true,content:`💰 Total: ${vendas}`});
+}
+
+if(interaction.customId === "admin_banir"){
 banidos.add(interaction.user.id);
-return interaction.reply({ephemeral:true,content:"🚫 Banido"});
+return interaction.reply({ephemeral:true,content:"🚫 Você foi banido (teste)"});
 }
 
-if(interaction.customId === "desbanir"){
+if(interaction.customId === "admin_desbanir"){
 banidos.delete(interaction.user.id);
 return interaction.reply({ephemeral:true,content:"✅ Desbanido"});
 }
 
-if(interaction.customId === "forcar"){
+if(interaction.customId === "admin_forcar"){
 const ultimo = Object.keys(pagamentos).pop();
-if(!ultimo) return interaction.reply({ephemeral:true,content:"❌ Nada"});
+if(!ultimo) return interaction.reply({ephemeral:true,content:"❌ Nada encontrado"});
 
 const info = pagamentos[ultimo];
 
@@ -150,18 +155,44 @@ entrega = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
 if(info.produto.tipo==="link"){
 entrega = info.produto.link;
 }
+if(info.produto.tipo==="otimizacao"){
+entrega = "✅ Produto liberado";
+}
 
 const canal = interaction.guild.channels.cache.find(c=>c.name === `ticket-${info.userId}`);
 if(canal) canal.send(`⚡ ENTREGA FORÇADA:\n${entrega}`);
 
-return interaction.reply({ephemeral:true,content:"✅ Enviado"});
+return interaction.reply({ephemeral:true,content:"✅ Entregue"});
 }
 
-// COMPRA
+}
+
+// ================= COPIAR =================
+if(interaction.customId.startsWith("copiar_")){
+const id = interaction.customId.split("_")[1];
+const dados = pagamentos[id];
+
+return interaction.reply({
+ephemeral:true,
+content:`📋 Copie:\n\`\`\`\n${dados.pix}\n\`\`\``
+});
+}
+
+// ================= PAGUEI =================
+if(interaction.customId.startsWith("paguei_")){
+return interaction.reply({
+ephemeral:true,
+content:"⏳ Estamos verificando automaticamente..."
+});
+}
+
+// ================= COMPRA =================
 const produto = PRODUTOS[interaction.customId];
 if(!produto) return;
 
 await interaction.deferReply({ephemeral:true});
+
+try{
 
 const pagamento = await payment.create({
 body:{
@@ -175,7 +206,11 @@ payer:{ email:`user${interaction.user.id}@gmail.com` }
 const copia = pagamento.point_of_interaction.transaction_data.qr_code;
 const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 
-pagamentos[pagamento.id] = { userId:interaction.user.id, produto };
+pagamentos[pagamento.id] = {
+userId: interaction.user.id,
+produto,
+pix: copia
+};
 
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.id}`,
@@ -188,13 +223,13 @@ permissionOverwrites:[
 });
 
 const embed = new EmbedBuilder()
-.setTitle("💳 PAGAMENTO")
+.setTitle("💳 PAGAMENTO PIX")
 .setDescription(`\`\`\`\n${copia}\n\`\`\``)
 .setColor("Green");
 
 const botoes = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("copiar").setLabel("📋 Copiar").setStyle(2),
-new ButtonBuilder().setCustomId("paguei").setLabel("✅ Já paguei").setStyle(3)
+new ButtonBuilder().setCustomId(`copiar_${pagamento.id}`).setLabel("📋 Copiar").setStyle(2),
+new ButtonBuilder().setCustomId(`paguei_${pagamento.id}`).setLabel("✅ Já paguei").setStyle(3)
 );
 
 if(produto.tipo==="otimizacao"){
@@ -207,10 +242,15 @@ canal.send({embeds:[embed],components:[botoes],files:[file]});
 canal.send({embeds:[embed],components:[botoes]});
 }
 
-interaction.editReply({content:`✅ ${canal}`});
+interaction.editReply({content:`✅ Ticket: ${canal}`});
 
-// auto delete
+// AUTO DELETE
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
+
+}catch(e){
+console.log(e);
+interaction.editReply({content:"❌ Erro no pagamento"});
+}
 
 });
 
@@ -241,7 +281,6 @@ if(info.produto.tipo==="otimizacao"){
 entrega = "✅ Compra confirmada";
 }
 
-// ticket
 const guild = client.guilds.cache.first();
 const canal = guild.channels.cache.find(c=>c.name === `ticket-${info.userId}`);
 
@@ -249,7 +288,7 @@ if(canal){
 canal.send(`✅ PAGAMENTO APROVADO\n${entrega}`);
 }
 
-// LOG (CORRIGIDO)
+// LOG
 const logs = await client.channels.fetch(CANAL_LOGS);
 logs.send(`💰 Venda\nUsuário: <@${info.userId}>\nProduto: ${info.produto.nome}\nValor: R$${info.produto.preco}`);
 
