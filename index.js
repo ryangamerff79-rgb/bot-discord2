@@ -35,40 +35,55 @@ accessToken: MP_TOKEN
 
 const payment = new Payment(clientMP);
 
-// PRODUTOS
+// ================= CONTAS INFINITAS =================
+const CONTAS = [
+"PODTOPTAP:dream282521",
+"gta19710559:85sJzrKnu",
+"vykl99911:Leng123?",
+"finnickloveschrismas:10011990t",
+"halotic21:Ddjac210392",
+"msfaraz69:blj55566"
+];
+
+// ================= PRODUTOS =================
 const PRODUTOS = {
-opt5:{ preco:5, nome:"Básica", link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file" },
-opt10:{ preco:10, nome:"Avançada", link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25B5es_diddy.rar/file" },
-opt20:{ preco:20, nome:"Suprema", link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file" }
+opt5:{ preco:5, nome:"🔥 Otimização Básica", tipo:"arquivo", link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file" },
+
+opt10:{ preco:10, nome:"⚡ Otimização Avançada", tipo:"arquivo", link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25B5es_diddy.rar/file" },
+
+opt20:{ preco:20, nome:"👑 Otimização Suprema", tipo:"arquivo", link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file" },
+
+steam:{ preco:5, nome:"🎮 Conta GTA V Steam", tipo:"conta" },
+
+sensi:{ preco:5, nome:"🎯 Pack Sensi PRO", tipo:"arquivo", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
 const pagamentos = {};
-const pagamentosAprovados = new Set();
 
+// ================= BOT ONLINE =================
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// PAINEL
+// ================= PAINEL OTIMIZAÇÃO =================
 client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
-.setTitle("🚀 Imperial Otimizações")
+.setTitle("🚀 IMPERIAL OTIMIZAÇÕES")
 .setDescription(`
-🔧 **Básica — R$5**
-Limpeza e mais leveza
+🔥 **BÁSICA — R$5**
+Deixe seu PC leve e rápido
 
-⚡ **Avançada — R$10**
-Mais FPS e desempenho
+⚡ **AVANÇADA — R$10**
+Mais FPS e menos travamentos
 
-👑 **Suprema — R$20**
-Máximo desempenho
+👑 **SUPREMA — R$20**
+Desempenho máximo
 
-👇 Clique abaixo para comprar
+💻 MAIS FPS + ZERO LAG
 `)
-.setColor("Green")
-.setImage("https://cdn.discordapp.com/attachments/1373392385014370334/1484376373916209202/4b754d98-91ab-421e-9032-25001a8d83e9_1.png");
+.setColor("Green");
 
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId("opt5").setLabel("Básica").setStyle(ButtonStyle.Primary),
@@ -80,80 +95,77 @@ msg.channel.send({embeds:[embed],components:[row]});
 }
 });
 
-// INTERAÇÕES
+// ================= PAINEL CONTAS =================
+client.on("messageCreate",async msg=>{
+if(msg.content === "!contas"){
+
+const embed = new EmbedBuilder()
+.setTitle("🎮 CONTAS GTA V STEAM")
+.setDescription(`
+🔥 ENTREGA AUTOMÁTICA
+🔥 CONTA PRONTA PRA JOGAR
+
+💰 APENAS R$5
+
+⚠️ ESTOQUE INFINITO
+`)
+.setColor("Blue");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("steam").setLabel("Comprar").setStyle(ButtonStyle.Primary)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
+});
+
+// ================= PAINEL SENSI =================
+client.on("messageCreate",async msg=>{
+if(msg.content === "!sensi"){
+
+const embed = new EmbedBuilder()
+.setTitle("🎯 PACK SENSI PRO")
+.setDescription(`
+🔥 MELHORE SUA MIRA
+🔥 MAIS PRECISÃO
+
+💰 APENAS R$5
+`)
+.setColor("Purple");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("sensi").setLabel("Comprar").setStyle(ButtonStyle.Success)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
+});
+
+// ================= COMPRA =================
 client.on("interactionCreate",async interaction=>{
-if(!interaction.isButton()) return;
+if(!interaction.isButton())return;
 
-// BOTÃO "JÁ PAGUEI"
-if(interaction.customId.startsWith("check_")){
-
-await interaction.deferReply({ flags: 64 });
-
-const id = interaction.customId.split("_")[1];
-
-const pagamentoInfo = await payment.get({ id });
-
-if(pagamentoInfo.status === "approved"){
-
-const info = pagamentos[id];
-if(!info) return interaction.editReply("❌ Pagamento não encontrado");
-
-if(pagamentosAprovados.has(id)){
-return interaction.editReply("⚠️ Já foi aprovado");
-}
-
-pagamentosAprovados.add(id);
-
-const user = await client.users.fetch(info.userId);
-
-await user.send(`✅ Pagamento confirmado!
-
-📦 Produto: ${info.produto.nome}
-📦 Download:
-${info.produto.link}`);
-
-const canal = await client.channels.fetch(info.canalId).catch(()=>null);
-
-if(canal){
-canal.send("✅ Pagamento aprovado! Ticket será fechado...");
-setTimeout(()=> canal.delete().catch(()=>{}), 5000);
-}
-
-return interaction.editReply("✅ Pagamento confirmado!");
-
-}else{
-return interaction.editReply("❌ Ainda não foi pago");
-}
-}
-
-// COMPRA
-await interaction.deferReply({ flags: 64 });
+await interaction.deferReply({ ephemeral: true });
 
 const produto = PRODUTOS[interaction.customId];
-if(!produto) return;
+if(!produto)return;
 
 const pagamento = await payment.create({
-body: {
+body:{
 transaction_amount: produto.preco,
 description: produto.nome,
-payment_method_id: "pix",
-payer: {
-email: `user${interaction.user.id}@gmail.com`
-},
-external_reference: `${interaction.user.id}-${Date.now()}`
+payment_method_id:"pix",
+payer:{ email:`user${interaction.user.id}@gmail.com` }
 }
 });
 
 const idPagamento = pagamento.id;
-
-const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
 
 pagamentos[idPagamento] = {
 userId: interaction.user.id,
 produto: produto,
-canalId: null,
-expira: Date.now() + 1000 * 60 * 15
+entregue:false
 };
 
 // criar ticket
@@ -167,125 +179,102 @@ permissionOverwrites:[
 ]
 });
 
-pagamentos[idPagamento].canalId = canal.id;
-
-// embed
 const embed = new EmbedBuilder()
-.setTitle("💳 Pagamento PIX")
-.setDescription(`💰 Produto: ${produto.nome}
+.setTitle("💳 PAGAMENTO PIX")
+.setDescription(`
+💰 Produto: ${produto.nome}
 💰 Valor: R$${produto.preco}
 
-🔑 Copia e cola PIX:
-\`\`\`
+🔑 Copia e cola:
 ${copiaecola}
-\`\`\`
 
-📱 Escaneie o QR Code abaixo
-
-Após pagar, clique em "Já paguei"`)
+⚠️ Após pagar aguarde confirmação automática
+`)
 .setColor("Green");
 
-// botão check
-const rowCheck = new ActionRowBuilder().addComponents(
-new ButtonBuilder()
-.setCustomId(`check_${idPagamento}`)
-.setLabel("Já paguei")
-.setStyle(ButtonStyle.Success)
-);
-
-// qr imagem
-const buffer = Buffer.from(qr, "base64");
-
-await canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[rowCheck],
-files:[{
-attachment: buffer,
-name: "qrcode.png"
-}]
-});
+canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 });
 
-// WEBHOOK PRO
+// ================= WEBHOOK =================
 app.post("/webhook", async (req,res)=>{
-
-try{
 
 const data = req.body;
 
-if(data.type !== "payment") return res.sendStatus(200);
+if(data.type === "payment"){
 
 const pagamentoInfo = await payment.get({
 id: data.data.id
 });
 
+if(pagamentoInfo.status === "approved"){
+
 const info = pagamentos[pagamentoInfo.id];
-if(!info) return res.sendStatus(200);
 
-if(pagamentosAprovados.has(pagamentoInfo.id)){
-return res.sendStatus(200);
-}
+if(!info || info.entregue) return;
 
-if(pagamentoInfo.status !== "approved"){
-return res.sendStatus(200);
-}
-
-if(Date.now() > info.expira){
-return res.sendStatus(200);
-}
-
-pagamentosAprovados.add(pagamentoInfo.id);
+info.entregue = true;
 
 const user = await client.users.fetch(info.userId);
+
+// ================= ENTREGA =================
+if(info.produto.tipo === "conta"){
+
+const conta = CONTAS[Math.floor(Math.random() * CONTAS.length)];
+
+await user.send(`🎮 SUA CONTA GTA V:
+${conta}`);
+
+}else{
 
 await user.send(`✅ Pagamento aprovado!
 
 📦 Produto: ${info.produto.nome}
-📦 Download:
+📥 Download:
 ${info.produto.link}`);
+}
+
+// ================= LOG =================
+try{
 
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-canalLogs.send(`💰 Venda: <@${info.userId}> - ${info.produto.nome}`);
-
-const canal = await client.channels.fetch(info.canalId).catch(()=>null);
-
-if(canal){
-canal.send("✅ Pagamento aprovado! Ticket será fechado...");
-setTimeout(()=> canal.delete().catch(()=>{}), 5000);
+if(!canalLogs){
+console.log("❌ Canal de logs não encontrado");
+return;
 }
 
+const logEmbed = new EmbedBuilder()
+.setTitle("💰 NOVA VENDA")
+.addFields(
+{ name:"Cliente", value:`<@${info.userId}>`, inline:true },
+{ name:"Produto", value:info.produto.nome, inline:true },
+{ name:"Valor", value:`R$${info.produto.preco}`, inline:true }
+)
+.setColor("Green")
+.setTimestamp();
+
+await canalLogs.send({embeds:[logEmbed]});
+
 }catch(err){
-console.log("ERRO WEBHOOK:", err);
+console.log("ERRO AO ENVIAR LOG:", err);
+}
+
+// ================= AUTO DELETE =================
+setTimeout(()=>{
+client.channels.cache.forEach(c=>{
+if(c.name === `ticket-${user.username}`){
+c.delete().catch(()=>{});
+}
+});
+}, 60000);
+
+}
 }
 
 res.sendStatus(200);
 });
-
-// EXPIRAÇÃO
-setInterval(()=>{
-
-for(const id in pagamentos){
-
-const p = pagamentos[id];
-
-if(Date.now() > p.expira){
-
-client.channels.fetch(p.canalId).then(canal=>{
-if(canal){
-canal.send("⏰ Pagamento expirado, fechando ticket...");
-setTimeout(()=> canal.delete().catch(()=>{}), 5000);
-}
-}).catch(()=>{});
-
-delete pagamentos[id];
-}
-}
-
-}, 60000);
 
 app.listen(3000);
 
