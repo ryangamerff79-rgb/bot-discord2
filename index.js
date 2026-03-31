@@ -1,14 +1,12 @@
 const {
 Client,
 GatewayIntentBits,
-EmbedBuilder,
-ActionRowBuilder,
 ButtonBuilder,
+ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-REST,
-Routes,
-SlashCommandBuilder
+EmbedBuilder,
+AttachmentBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -20,229 +18,99 @@ app.use(express.json());
 const client = new Client({
 intents:[
 GatewayIntentBits.Guilds,
-GatewayIntentBits.GuildMessages
+GatewayIntentBits.GuildMessages,
+GatewayIntentBits.MessageContent
 ]
 });
 
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID; // ID do bot
-const GUILD_ID = process.env.GUILD_ID; // ID do servidor
-
-const CARGO_ADMIN = "1466621093799268443";
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1484365314140541078";
 
 // MERCADO PAGO
-const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
-const payment = new Payment(mp);
+const clientMP = new MercadoPagoConfig({
+accessToken: MP_TOKEN
+});
 
-// CONTAS GTA
-const CONTAS_GTA = [
-"PODTOPTAP:dream282521",
-"gta19710559:85sJzrKnu",
-"vykl99911:Leng123?",
-"finnickloveschrismas:10011990t",
-"halotic21:Ddjac210392",
-"msfaraz69:blj55566"
-];
-
-// SISTEMA
-let totalVendas = 0;
-let totalFaturado = 0;
-let blacklist = [];
+const payment = new Payment(clientMP);
 
 // PRODUTOS
 const PRODUTOS = {
-opt5:{ preco:5, nome:"Otimização Básica", tipo:"otim" },
-opt10:{ preco:10, nome:"Otimização Avançada", tipo:"otim" },
-opt20:{ preco:20, nome:"Otimização Suprema", tipo:"otim" },
-gta:{ preco:5, nome:"Conta GTA V", tipo:"gta" },
-sensi:{ preco:5, nome:"Pack Sensi", tipo:"sensi" }
+opt5:{ preco:5, nome:"Otimização Básica" },
+opt10:{ preco:10, nome:"Otimização Avançada" },
+opt20:{ preco:20, nome:"Otimização Suprema" }
 };
 
 const pagamentos = {};
 
-// ================= SLASH COMMANDS =================
-
-const commands = [
-new SlashCommandBuilder().setName("painel").setDescription("Painel de otimizações"),
-new SlashCommandBuilder().setName("gta").setDescription("Painel GTA V"),
-new SlashCommandBuilder().setName("sensi").setDescription("Painel sensi"),
-new SlashCommandBuilder().setName("admin").setDescription("Painel admin"),
-new SlashCommandBuilder()
-.setName("ban")
-.setDescription("Banir usuário")
-.addUserOption(o=>o.setName("user").setDescription("Usuário").setRequired(true)),
-new SlashCommandBuilder()
-.setName("unban")
-.setDescription("Desbanir usuário")
-.addUserOption(o=>o.setName("user").setDescription("Usuário").setRequired(true)),
-new SlashCommandBuilder()
-.setName("anunciar")
-.setDescription("Enviar anúncio")
-.addStringOption(o=>o.setName("msg").setDescription("Mensagem").setRequired(true)),
-new SlashCommandBuilder().setName("fechar").setDescription("Fechar ticket")
-];
-
-const rest = new REST({ version:"10" }).setToken(TOKEN);
-
-client.once("ready", async ()=>{
-
-await rest.put(
-Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
-{ body: commands }
-);
-
+client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// ================= INTERAÇÕES =================
-
-client.on("interactionCreate", async interaction => {
-
-if(interaction.isChatInputCommand()){
-
-// PERMISSÃO ADMIN
-const isAdmin = interaction.member.roles.cache.has(CARGO_ADMIN);
-
-// ===== PAINEL =====
-if(interaction.commandName === "painel"){
+// PAINEL
+client.on("messageCreate",async msg=>{
+if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
-.setTitle("🚀 Otimizações")
-.setDescription("Escolha abaixo")
+.setTitle("🚀 Imperial Otimizações")
+.setDescription(`
+🔧 **Básica — R$5**
+PC mais leve e rápido
+
+⚡ **Avançada — R$10**
+FPS estável + menos delay
+
+👑 **Suprema — R$20**
+Máximo desempenho
+
+👇 Clique para comprar
+`)
 .setColor("Green");
 
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("opt5").setLabel("R$5").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("opt10").setLabel("R$10").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId("opt20").setLabel("R$20").setStyle(ButtonStyle.Danger)
+new ButtonBuilder().setCustomId("opt5").setLabel("Básica").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("opt10").setLabel("Avançada").setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId("opt20").setLabel("Suprema").setStyle(ButtonStyle.Danger)
 );
 
-return interaction.reply({embeds:[embed],components:[row]});
-}
-
-// ===== GTA =====
-if(interaction.commandName === "gta"){
-
-const embed = new EmbedBuilder()
-.setTitle("🔥 GTA V R$5")
-.setDescription("Conta pronta + entrega automática")
-.setColor("Yellow");
-
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("gta").setLabel("Comprar").setStyle(ButtonStyle.Success)
-);
-
-return interaction.reply({embeds:[embed],components:[row]});
-}
-
-// ===== SENSI =====
-if(interaction.commandName === "sensi"){
-
-const embed = new EmbedBuilder()
-.setTitle("🎯 SENSI R$5")
-.setDescription("Melhor precisão e desempenho")
-.setColor("Blue");
-
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("sensi").setLabel("Comprar").setStyle(ButtonStyle.Primary)
-);
-
-return interaction.reply({embeds:[embed],components:[row]});
-}
-
-// ===== ADMIN =====
-if(interaction.commandName === "admin"){
-
-if(!isAdmin) return interaction.reply({content:"Sem permissão",ephemeral:true});
-
-return interaction.reply({
-content:`💰 Faturado: R$${totalFaturado}\n🧾 Vendas: ${totalVendas}\n🚫 Blacklist: ${blacklist.length}`,
-ephemeral:true
-});
-}
-
-// ===== BAN =====
-if(interaction.commandName === "ban"){
-if(!isAdmin) return;
-
-const user = interaction.options.getUser("user");
-blacklist.push(user.id);
-
-return interaction.reply("Usuário banido");
-}
-
-// ===== UNBAN =====
-if(interaction.commandName === "unban"){
-if(!isAdmin) return;
-
-const user = interaction.options.getUser("user");
-blacklist = blacklist.filter(id=>id!==user.id);
-
-return interaction.reply("Usuário desbanido");
-}
-
-// ===== ANUNCIAR =====
-if(interaction.commandName === "anunciar"){
-if(!isAdmin) return;
-
-const msg = interaction.options.getString("msg");
-
-interaction.guild.members.cache.forEach(m=>{
-if(!m.user.bot){
-m.send(msg).catch(()=>{});
+msg.channel.send({embeds:[embed],components:[row]});
 }
 });
 
-return interaction.reply("Anúncio enviado");
-}
+// COMPRA
+client.on("interactionCreate",async interaction=>{
+if(!interaction.isButton())return;
 
-// ===== FECHAR =====
-if(interaction.commandName === "fechar"){
-if(!isAdmin) return;
-
-interaction.channel.send("Fechando...");
-
-setTimeout(()=>{
-interaction.channel.delete().catch(()=>{});
-},3000);
-
-}
-
-}
-
-// ================= BOTÕES =================
-
-if(interaction.isButton()){
-
-if(blacklist.includes(interaction.user.id)){
-return interaction.reply({content:"🚫 Bloqueado",ephemeral:true});
-}
-
-await interaction.deferReply({ephemeral:true});
+await interaction.deferReply({ ephemeral:true });
 
 const produto = PRODUTOS[interaction.customId];
+if(!produto)return;
+
+try{
 
 const pagamento = await payment.create({
 body:{
 transaction_amount: produto.preco,
 description: produto.nome,
 payment_method_id:"pix",
-payer:{ email:`user${interaction.user.id}@gmail.com` }
+payer:{
+email:`user${interaction.user.id}@gmail.com`
+}
 }
 });
 
-const copia = pagamento.point_of_interaction.transaction_data.qr_code;
+const idPagamento = pagamento.id;
+const qrBase64 = pagamento.point_of_interaction.transaction_data.qr_code_base64;
+const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
 
-pagamentos[pagamento.id] = {
+pagamentos[idPagamento] = {
 userId: interaction.user.id,
 produto: produto
 };
 
-// criar ticket
+// criar canal
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -253,67 +121,95 @@ permissionOverwrites:[
 ]
 });
 
-// embed pagamento
-const embed = new EmbedBuilder()
-.setTitle("💳 PAGAMENTO PIX")
-.setDescription(`Copie abaixo:
+// converter QR
+const buffer = Buffer.from(qrBase64, "base64");
+const attachment = new AttachmentBuilder(buffer, { name:"qrcode.png" });
 
+// embed
+const embed = new EmbedBuilder()
+.setTitle("💳 Pagamento PIX")
+.setDescription(`💰 Produto: ${produto.nome}
+💰 Valor: R$${produto.preco}
+
+📋 Copia e cola:
 \`\`\`
-${copia}
-\`\`\``)
+${copiaecola}
+\`\`\`
+
+Após pagar, aguarde confirmação automática`)
+.setImage("attachment://qrcode.png")
 .setColor("Green");
 
-canal.send({content:`<@${interaction.user.id}>`,embeds:[embed]});
+// botão copiar
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setLabel("Copiar código PIX")
+.setStyle(ButtonStyle.Link)
+.setURL(`https://api.whatsapp.com/send?text=${encodeURIComponent(copiaecola)}`)
+);
 
-interaction.editReply({content:`Ticket: ${canal}`});
+// enviar
+canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row],
+files:[attachment]
+});
+
+interaction.editReply({content:`✅ Ticket criado: ${canal}`});
+
+}catch(err){
+console.log(err);
+interaction.editReply({content:"❌ Erro ao gerar pagamento"});
 }
 
 });
 
-// ================= WEBHOOK =================
-
+// WEBHOOK
 app.post("/webhook", async (req,res)=>{
+
+try{
 
 if(req.body.type === "payment"){
 
-const infoMP = await payment.get({ id:req.body.data.id });
+const pagamentoInfo = await payment.get({
+id: req.body.data.id
+});
 
-if(infoMP.status === "approved"){
+if(pagamentoInfo.status === "approved"){
 
-const dados = pagamentos[infoMP.id];
-if(!dados)return;
+const info = pagamentos[pagamentoInfo.id];
+if(!info)return;
 
-totalVendas++;
-totalFaturado += dados.produto.preco;
+const user = await client.users.fetch(info.userId);
 
-const user = await client.users.fetch(dados.userId);
+// DM
+await user.send(`✅ Pagamento aprovado!
 
-// ENTREGA
-if(dados.produto.tipo === "gta"){
-const conta = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
-user.send(`🎮 Conta:\n${conta}`);
-}
-
-if(dados.produto.tipo === "sensi"){
-user.send("🎯 https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file");
-}
-
-if(dados.produto.tipo === "otim"){
-user.send("🚀 Entrega manual");
-}
+📦 Produto: ${info.produto.nome}
+Obrigado pela compra!`);
 
 // LOG
-const logs = await client.channels.fetch(CANAL_LOGS);
+const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-logs.send(`💰 Venda\nProduto: ${dados.produto.nome}\nValor: R$${dados.produto.preco}`);
+const logEmbed = new EmbedBuilder()
+.setTitle("💰 Venda Aprovada")
+.addFields(
+{ name:"Cliente", value:`<@${info.userId}>`, inline:true },
+{ name:"Produto", value:info.produto.nome, inline:true },
+{ name:"Valor", value:`R$${info.produto.preco}`, inline:true }
+)
+.setColor("Green")
+.setTimestamp();
 
-// AUTO DELETE
-setTimeout(()=>{
-const canal = client.channels.cache.find(c=>c.name.includes(dados.userId));
-if(canal) canal.delete().catch(()=>{});
-},20000);
+canalLogs.send({embeds:[logEmbed]});
 
 }
+
+}
+
+}catch(e){
+console.log(e);
 }
 
 res.sendStatus(200);
