@@ -33,15 +33,27 @@ const CANAL_LOGS = "1484365314140541078";
 const clientMP = new MercadoPagoConfig({
 accessToken: MP_TOKEN
 });
-
 const payment = new Payment(clientMP);
 
 // PRODUTOS
 const PRODUTOS = {
-opt5:{ preco:5, nome:"Otimização Básica" },
-opt10:{ preco:10, nome:"Otimização Avançada" },
-opt20:{ preco:20, nome:"Otimização Suprema" }
+opt5:{ preco:5, nome:"Otimização Básica", tipo:"otimizacao" },
+opt10:{ preco:10, nome:"Otimização Avançada", tipo:"otimizacao" },
+opt20:{ preco:20, nome:"Otimização Suprema", tipo:"otimizacao" },
+
+gta:{ preco:5, nome:"Conta GTA V", tipo:"auto" },
+sensi:{ preco:5, nome:"Pack Sensi", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
+
+// CONTAS GTA (INFINITO)
+const CONTAS_GTA = [
+"PODTOPTAP:dream282521",
+"gta19710559:85sJzrKnu",
+"vykl99911:Leng123?",
+"finnickloveschrismas:10011990t",
+"halotic21:Ddjac210392",
+"msfaraz69:blj55566"
+];
 
 const pagamentos = {};
 
@@ -49,23 +61,16 @@ client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// PAINEL
+// PAINEL OTIMIZAÇÃO
 client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
 .setTitle("🚀 Imperial Otimizações")
 .setDescription(`
-🔧 **Básica — R$5**
-PC mais leve e rápido
-
-⚡ **Avançada — R$10**
-FPS estável + menos delay
-
-👑 **Suprema — R$20**
-Máximo desempenho
-
-👇 Clique para comprar
+🔧 Básica — R$5  
+⚡ Avançada — R$10  
+👑 Suprema — R$20  
 `)
 .setColor("Green");
 
@@ -77,16 +82,59 @@ new ButtonBuilder().setCustomId("opt20").setLabel("Suprema").setStyle(ButtonStyl
 
 msg.channel.send({embeds:[embed],components:[row]});
 }
+
+// PAINEL GTA
+if(msg.content === "!painelgta"){
+
+const embed = new EmbedBuilder()
+.setTitle("🎮 Contas GTA V")
+.setDescription(`
+🔥 Conta com GTA V instalado  
+⚡ Acesso imediato  
+💰 Apenas R$5  
+`)
+.setColor("Blue");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("gta").setLabel("Comprar GTA V").setStyle(ButtonStyle.Primary)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
+
+// PAINEL SENSI
+if(msg.content === "!painelsensi"){
+
+const embed = new EmbedBuilder()
+.setTitle("🎯 Pack Sensi PRO")
+.setDescription(`
+🔥 Melhor sensi para FPS  
+⚡ Jogabilidade insana  
+💰 Apenas R$5  
+`)
+.setColor("Purple");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("sensi").setLabel("Comprar Pack").setStyle(ButtonStyle.Success)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
+
 });
 
 // COMPRA
 client.on("interactionCreate",async interaction=>{
-if(!interaction.isButton())return;
+
+if(!interaction.isButton()) return;
 
 await interaction.deferReply({ ephemeral:true });
 
 const produto = PRODUTOS[interaction.customId];
-if(!produto)return;
+
+if(!produto){
+return interaction.editReply({content:"❌ Produto não encontrado"});
+}
 
 try{
 
@@ -102,15 +150,15 @@ email:`user${interaction.user.id}@gmail.com`
 });
 
 const idPagamento = pagamento.id;
-const qrBase64 = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
+const qrBase64 = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 
 pagamentos[idPagamento] = {
 userId: interaction.user.id,
 produto: produto
 };
 
-// criar canal
+// criar ticket
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -121,12 +169,8 @@ permissionOverwrites:[
 ]
 });
 
-// converter QR
-const buffer = Buffer.from(qrBase64, "base64");
-const attachment = new AttachmentBuilder(buffer, { name:"qrcode.png" });
-
-// embed
-const embed = new EmbedBuilder()
+// EMBED
+let embed = new EmbedBuilder()
 .setTitle("💳 Pagamento PIX")
 .setDescription(`💰 Produto: ${produto.nome}
 💰 Valor: R$${produto.preco}
@@ -134,27 +178,37 @@ const embed = new EmbedBuilder()
 📋 Copia e cola:
 \`\`\`
 ${copiaecola}
-\`\`\`
-
-Após pagar, aguarde confirmação automática`)
-.setImage("attachment://qrcode.png")
+\`\`\``)
 .setColor("Green");
 
-// botão copiar
+// BOTÃO COPIAR
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder()
-.setLabel("Copiar código PIX")
+.setLabel("Copiar PIX")
 .setStyle(ButtonStyle.Link)
 .setURL(`https://api.whatsapp.com/send?text=${encodeURIComponent(copiaecola)}`)
 );
 
-// enviar
+// SE FOR OTIMIZAÇÃO → TEM QR
+if(produto.tipo === "otimizacao"){
+const buffer = Buffer.from(qrBase64, "base64");
+const attachment = new AttachmentBuilder(buffer, { name:"qrcode.png" });
+
+embed.setImage("attachment://qrcode.png");
+
 canal.send({
 content:`<@${interaction.user.id}>`,
 embeds:[embed],
 components:[row],
 files:[attachment]
 });
+}else{
+canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row]
+});
+}
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
@@ -182,12 +236,33 @@ const info = pagamentos[pagamentoInfo.id];
 if(!info)return;
 
 const user = await client.users.fetch(info.userId);
+const guild = client.guilds.cache.first();
+const member = await guild.members.fetch(info.userId);
+
+// ENTREGA
+let entrega = "";
+
+if(info.produto.tipo === "auto"){
+const conta = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
+entrega = `🎮 Conta GTA:\n\`\`\`\n${conta}\n\`\`\``;
+}
+
+if(info.produto.tipo === "link"){
+entrega = `📦 Download:\n${info.produto.link}`;
+}
+
+if(info.produto.tipo === "otimizacao"){
+entrega = "✅ Produto liberado! (envio manual ou configure depois)";
+}
+
+// enviar no ticket
+const canal = guild.channels.cache.find(c=>c.name === `ticket-${member.user.username}`);
+if(canal){
+canal.send(`✅ Pagamento aprovado!\n\n${entrega}`);
+}
 
 // DM
-await user.send(`✅ Pagamento aprovado!
-
-📦 Produto: ${info.produto.nome}
-Obrigado pela compra!`);
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
 
 // LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
