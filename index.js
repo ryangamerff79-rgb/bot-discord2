@@ -96,7 +96,6 @@ const embed = new EmbedBuilder()
 .setTitle("🎮 CONTAS GTA V")
 .setDescription(`
 🔥 ENTREGA AUTOMÁTICA
-🔥 CONTA COM GTA
 🔥 ACESSO IMEDIATO
 
 💰 R$5
@@ -138,7 +137,21 @@ msg.channel.send({embeds:[embed],components:[row]});
 client.on("interactionCreate", async interaction => {
 if (!interaction.isButton()) return;
 
-// botão já paguei
+// BOTÃO COPIAR
+if(interaction.customId.startsWith("copy_")){
+const idPagamento = interaction.customId.split("_")[1];
+
+const pagamentoInfo = await payment.get({ id: idPagamento });
+const copiaecola = pagamentoInfo.point_of_interaction.transaction_data.qr_code;
+
+await interaction.reply({
+content:`📋 Copie abaixo:\n\n\`\`\`\n${copiaecola}\n\`\`\``,
+ephemeral:true
+});
+return;
+}
+
+// BOTÃO JÁ PAGUEI
 if(interaction.customId.startsWith("check_")){
 const idPagamento = interaction.customId.split("_")[1];
 
@@ -195,18 +208,26 @@ const embed = new EmbedBuilder()
 💰 Produto: ${produto.nome}
 💰 Valor: R$${produto.preco}
 
-🔑 Copia e cola:
+📋 Copie o código:
+\`\`\`
 ${copiaecola}
+\`\`\`
 
 ⏳ Expira em 10 minutos
 `)
 .setColor("Green");
 
+// BOTÕES
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder()
 .setCustomId(`check_${idPagamento}`)
 .setLabel("Já paguei")
-.setStyle(ButtonStyle.Success)
+.setStyle(ButtonStyle.Success),
+
+new ButtonBuilder()
+.setCustomId(`copy_${idPagamento}`)
+.setLabel("Copiar código")
+.setStyle(ButtonStyle.Primary)
 );
 
 // QR só otimização
@@ -228,7 +249,7 @@ components:[row]
 });
 }
 
-// auto delete
+// AUTO DELETE
 setTimeout(async ()=>{
 try{
 await canal.send("⏰ Tempo expirado!");
