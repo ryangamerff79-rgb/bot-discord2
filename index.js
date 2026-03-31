@@ -27,25 +27,23 @@ GatewayIntentBits.MessageContent
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
-const CANAL_LOGS = "1484365314140541078";
+const CANAL_LOGS = "1488589113954271282";
+const CARGO_ADM = "1466621093799268443";
 
-// MERCADO PAGO
-const clientMP = new MercadoPagoConfig({
-accessToken: MP_TOKEN
-});
-const payment = new Payment(clientMP);
+// MP
+const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
+const payment = new Payment(mp);
 
 // PRODUTOS
 const PRODUTOS = {
 opt5:{ preco:5, nome:"Otimização Básica", tipo:"otimizacao" },
 opt10:{ preco:10, nome:"Otimização Avançada", tipo:"otimizacao" },
 opt20:{ preco:20, nome:"Otimização Suprema", tipo:"otimizacao" },
-
 gta:{ preco:5, nome:"Conta GTA V", tipo:"auto" },
 sensi:{ preco:5, nome:"Pack Sensi", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
-// CONTAS GTA (INFINITO)
+// CONTAS GTA
 const CONTAS_GTA = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -55,112 +53,132 @@ const CONTAS_GTA = [
 "msfaraz69:blj55566"
 ];
 
+let vendas = 0;
+let banidos = new Set();
 const pagamentos = {};
 
-client.once("ready",()=>{
-console.log(`BOT ONLINE: ${client.user.tag}`);
-});
+client.once("ready",()=>console.log("BOT ONLINE"));
 
-// PAINEL OTIMIZAÇÃO
-client.on("messageCreate",async msg=>{
+
+// ================= PAINEIS =================
+
+client.on("messageCreate", async msg=>{
+
 if(msg.content === "!painel"){
-
-const embed = new EmbedBuilder()
-.setTitle("🚀 Imperial Otimizações")
-.setDescription(`
-🔧 Básica — R$5  
-⚡ Avançada — R$10  
-👑 Suprema — R$20  
-`)
-.setColor("Green");
-
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("opt5").setLabel("Básica").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("opt10").setLabel("Avançada").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId("opt20").setLabel("Suprema").setStyle(ButtonStyle.Danger)
-);
-
-msg.channel.send({embeds:[embed],components:[row]});
+msg.channel.send({
+embeds:[new EmbedBuilder().setTitle("🚀 OTIMIZAÇÕES").setColor("Green")],
+components:[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("opt5").setLabel("Básica R$5").setStyle(1),
+new ButtonBuilder().setCustomId("opt10").setLabel("Avançada R$10").setStyle(3),
+new ButtonBuilder().setCustomId("opt20").setLabel("Suprema R$20").setStyle(4)
+)]
+});
 }
 
-// PAINEL GTA
 if(msg.content === "!painelgta"){
-
-const embed = new EmbedBuilder()
-.setTitle("🎮 Contas GTA V")
-.setDescription(`
-🔥 Conta com GTA V instalado  
-⚡ Acesso imediato  
-💰 Apenas R$5  
-`)
-.setColor("Blue");
-
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("gta").setLabel("Comprar GTA V").setStyle(ButtonStyle.Primary)
-);
-
-msg.channel.send({embeds:[embed],components:[row]});
+msg.channel.send({
+embeds:[new EmbedBuilder().setTitle("🎮 GTA V R$5").setColor("Blue")],
+components:[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("gta").setLabel("Comprar").setStyle(1)
+)]
+});
 }
 
-// PAINEL SENSI
 if(msg.content === "!painelsensi"){
+msg.channel.send({
+embeds:[new EmbedBuilder().setTitle("🎯 PACK SENSI R$5").setColor("Purple")],
+components:[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("sensi").setLabel("Comprar").setStyle(3)
+)]
+});
+}
 
-const embed = new EmbedBuilder()
-.setTitle("🎯 Pack Sensi PRO")
-.setDescription(`
-🔥 Melhor sensi para FPS  
-⚡ Jogabilidade insana  
-💰 Apenas R$5  
-`)
-.setColor("Purple");
+// ADMIN
+if(msg.content === "!admin"){
+if(!msg.member.roles.cache.has(CARGO_ADM)) return;
 
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("sensi").setLabel("Comprar Pack").setStyle(ButtonStyle.Success)
-);
-
-msg.channel.send({embeds:[embed],components:[row]});
+msg.channel.send({
+embeds:[new EmbedBuilder().setTitle("🛠️ PAINEL ADMIN").setColor("Red")],
+components:[new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("forcar").setLabel("⚡ Forçar Entrega").setStyle(3),
+new ButtonBuilder().setCustomId("vendas").setLabel("📊 Vendas").setStyle(1),
+new ButtonBuilder().setCustomId("banir").setLabel("🚫 Banir").setStyle(4),
+new ButtonBuilder().setCustomId("desbanir").setLabel("✅ Desbanir").setStyle(2)
+)]
+});
 }
 
 });
 
-// COMPRA
-client.on("interactionCreate",async interaction=>{
+
+// ================= INTERAÇÕES =================
+
+client.on("interactionCreate", async interaction=>{
 
 if(!interaction.isButton()) return;
 
-await interaction.deferReply({ ephemeral:true });
-
-const produto = PRODUTOS[interaction.customId];
-
-if(!produto){
-return interaction.editReply({content:"❌ Produto não encontrado"});
+// bloqueio
+if(banidos.has(interaction.user.id)){
+return interaction.reply({ephemeral:true,content:"🚫 Você está bloqueado"});
 }
 
-try{
+// ADMIN
+if(interaction.customId === "vendas"){
+return interaction.reply({ephemeral:true,content:`💰 Vendas: ${vendas}`});
+}
+
+if(interaction.customId === "banir"){
+banidos.add(interaction.user.id);
+return interaction.reply({ephemeral:true,content:"🚫 Banido"});
+}
+
+if(interaction.customId === "desbanir"){
+banidos.delete(interaction.user.id);
+return interaction.reply({ephemeral:true,content:"✅ Desbanido"});
+}
+
+if(interaction.customId === "forcar"){
+const ultimo = Object.keys(pagamentos).pop();
+if(!ultimo) return interaction.reply({ephemeral:true,content:"❌ Nada"});
+
+const info = pagamentos[ultimo];
+
+let entrega = "";
+if(info.produto.tipo==="auto"){
+entrega = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
+}
+if(info.produto.tipo==="link"){
+entrega = info.produto.link;
+}
+
+const canal = interaction.guild.channels.cache.find(c=>c.name === `ticket-${info.userId}`);
+if(canal) canal.send(`⚡ ENTREGA FORÇADA:\n${entrega}`);
+
+return interaction.reply({ephemeral:true,content:"✅ Enviado"});
+}
+
+// COMPRA
+const produto = PRODUTOS[interaction.customId];
+if(!produto) return;
+
+await interaction.deferReply({ephemeral:true});
 
 const pagamento = await payment.create({
 body:{
 transaction_amount: produto.preco,
 description: produto.nome,
 payment_method_id:"pix",
-payer:{
-email:`user${interaction.user.id}@gmail.com`
-}
+payer:{ email:`user${interaction.user.id}@gmail.com` }
 }
 });
 
-const idPagamento = pagamento.id;
-const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
-const qrBase64 = pagamento.point_of_interaction.transaction_data.qr_code_base64;
+const copia = pagamento.point_of_interaction.transaction_data.qr_code;
+const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 
-pagamentos[idPagamento] = {
-userId: interaction.user.id,
-produto: produto
-};
+pagamentos[pagamento.id] = { userId:interaction.user.id, produto };
 
-// criar ticket
 const canal = await interaction.guild.channels.create({
-name:`ticket-${interaction.user.username}`,
+name:`ticket-${interaction.user.id}`,
 type:0,
 parent:CATEGORIA_ID,
 permissionOverwrites:[
@@ -169,127 +187,78 @@ permissionOverwrites:[
 ]
 });
 
-// EMBED
-let embed = new EmbedBuilder()
-.setTitle("💳 Pagamento PIX")
-.setDescription(`💰 Produto: ${produto.nome}
-💰 Valor: R$${produto.preco}
-
-📋 Copia e cola:
-\`\`\`
-${copiaecola}
-\`\`\``)
+const embed = new EmbedBuilder()
+.setTitle("💳 PAGAMENTO")
+.setDescription(`\`\`\`\n${copia}\n\`\`\``)
 .setColor("Green");
 
-// BOTÃO COPIAR
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder()
-.setLabel("Copiar PIX")
-.setStyle(ButtonStyle.Link)
-.setURL(`https://api.whatsapp.com/send?text=${encodeURIComponent(copiaecola)}`)
+const botoes = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("copiar").setLabel("📋 Copiar").setStyle(2),
+new ButtonBuilder().setCustomId("paguei").setLabel("✅ Já paguei").setStyle(3)
 );
 
-// SE FOR OTIMIZAÇÃO → TEM QR
-if(produto.tipo === "otimizacao"){
-const buffer = Buffer.from(qrBase64, "base64");
-const attachment = new AttachmentBuilder(buffer, { name:"qrcode.png" });
+if(produto.tipo==="otimizacao"){
+const buffer = Buffer.from(qr,"base64");
+const file = new AttachmentBuilder(buffer,{name:"pix.png"});
+embed.setImage("attachment://pix.png");
 
-embed.setImage("attachment://qrcode.png");
-
-canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row],
-files:[attachment]
-});
+canal.send({embeds:[embed],components:[botoes],files:[file]});
 }else{
-canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row]
-});
+canal.send({embeds:[embed],components:[botoes]});
 }
 
-interaction.editReply({content:`✅ Ticket criado: ${canal}`});
+interaction.editReply({content:`✅ ${canal}`});
 
-}catch(err){
-console.log(err);
-interaction.editReply({content:"❌ Erro ao gerar pagamento"});
-}
+// auto delete
+setTimeout(()=>canal.delete().catch(()=>{}),600000);
 
 });
 
-// WEBHOOK
+
+// ================= WEBHOOK =================
+
 app.post("/webhook", async (req,res)=>{
-
-try{
 
 if(req.body.type === "payment"){
 
-const pagamentoInfo = await payment.get({
-id: req.body.data.id
-});
+const infoMP = await payment.get({ id:req.body.data.id });
 
-if(pagamentoInfo.status === "approved"){
+if(infoMP.status === "approved"){
 
-const info = pagamentos[pagamentoInfo.id];
-if(!info)return;
+const info = pagamentos[infoMP.id];
+if(!info) return;
 
-const user = await client.users.fetch(info.userId);
-const guild = client.guilds.cache.first();
-const member = await guild.members.fetch(info.userId);
+vendas++;
 
-// ENTREGA
 let entrega = "";
-
-if(info.produto.tipo === "auto"){
-const conta = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
-entrega = `🎮 Conta GTA:\n\`\`\`\n${conta}\n\`\`\``;
+if(info.produto.tipo==="auto"){
+entrega = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
+}
+if(info.produto.tipo==="link"){
+entrega = info.produto.link;
+}
+if(info.produto.tipo==="otimizacao"){
+entrega = "✅ Compra confirmada";
 }
 
-if(info.produto.tipo === "link"){
-entrega = `📦 Download:\n${info.produto.link}`;
-}
+// ticket
+const guild = client.guilds.cache.first();
+const canal = guild.channels.cache.find(c=>c.name === `ticket-${info.userId}`);
 
-if(info.produto.tipo === "otimizacao"){
-entrega = "✅ Produto liberado! (envio manual ou configure depois)";
-}
-
-// enviar no ticket
-const canal = guild.channels.cache.find(c=>c.name === `ticket-${member.user.username}`);
 if(canal){
-canal.send(`✅ Pagamento aprovado!\n\n${entrega}`);
+canal.send(`✅ PAGAMENTO APROVADO\n${entrega}`);
 }
 
-// DM
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
-
-// LOG
-const canalLogs = await client.channels.fetch(CANAL_LOGS);
-
-const logEmbed = new EmbedBuilder()
-.setTitle("💰 Venda Aprovada")
-.addFields(
-{ name:"Cliente", value:`<@${info.userId}>`, inline:true },
-{ name:"Produto", value:info.produto.nome, inline:true },
-{ name:"Valor", value:`R$${info.produto.preco}`, inline:true }
-)
-.setColor("Green")
-.setTimestamp();
-
-canalLogs.send({embeds:[logEmbed]});
+// LOG (CORRIGIDO)
+const logs = await client.channels.fetch(CANAL_LOGS);
+logs.send(`💰 Venda\nUsuário: <@${info.userId}>\nProduto: ${info.produto.nome}\nValor: R$${info.produto.preco}`);
 
 }
 
-}
-
-}catch(e){
-console.log(e);
 }
 
 res.sendStatus(200);
 });
 
 app.listen(3000);
-
 client.login(TOKEN);
