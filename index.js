@@ -28,9 +28,8 @@ const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
-const CARGO_ADMIN = "1466621093799268443";
 
-// MP
+// MERCADO PAGO
 const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
 const payment = new Payment(mp);
 
@@ -44,7 +43,7 @@ gta:{ preco:5, nome:"Conta GTA V", tipo:"auto" },
 sensi:{ preco:5, nome:"Pack Sensi", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
-// CONTAS INFINITAS
+// CONTAS GTA (INFINITO)
 const CONTAS = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -55,7 +54,6 @@ const CONTAS = [
 ];
 
 const pagamentos = {};
-const blacklist = new Set();
 
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
@@ -67,7 +65,13 @@ if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
 .setTitle("🚀 LOJA COMPLETA")
-.setDescription("Escolha um produto abaixo 👇")
+.setDescription(`
+💻 Otimizações (FPS + desempenho)
+🎮 Contas GTA V
+🎯 Pack Sensi PRO
+
+👇 Clique abaixo para comprar
+`)
 .setColor("Green");
 
 const row = new ActionRowBuilder().addComponents(
@@ -81,44 +85,42 @@ msg.channel.send({embeds:[embed],components:[row]});
 });
 
 // INTERAÇÕES
-client.on("interactionCreate",async interaction=>{
+client.on("interactionCreate", async (interaction) => {
 
-// BOTÕES
-if(interaction.isButton()){
+if(!interaction.isButton()) return;
 
-// ADMIN
-if(interaction.customId.startsWith("admin_")){
-if(!interaction.member.roles.cache.has(CARGO_ADMIN)){
-return interaction.reply({content:"❌ Sem permissão",ephemeral:true});
+// BOTÃO COPIAR
+if(interaction.customId.startsWith("copiar_")){
+const id = interaction.customId.split("_")[1];
+const data = pagamentos[id];
+
+if(!data){
+return interaction.reply({content:"❌ Pagamento não encontrado",ephemeral:true});
 }
 
-if(interaction.customId === "admin_vendas"){
-return interaction.reply({content:`💰 Total vendas: ${Object.keys(pagamentos).length}`,ephemeral:true});
+return interaction.reply({
+content:`📋 Copie o PIX:\n\`\`\`\n${data.copia}\n\`\`\``,
+ephemeral:true
+});
 }
 
-if(interaction.customId === "admin_ban"){
-blacklist.add(interaction.user.id);
-return interaction.reply({content:"🚫 Usuário banido",ephemeral:true});
+// BOTÃO PAGUEI
+if(interaction.customId.startsWith("paguei_")){
+return interaction.reply({
+content:"⏳ Aguardando confirmação automática...",
+ephemeral:true
+});
 }
 
-if(interaction.customId === "admin_forcar"){
-return interaction.reply({content:"📦 Entrega forçada enviada",ephemeral:true});
-}
-}
-
-// BLOQUEIO
-if(blacklist.has(interaction.user.id)){
-return interaction.reply({content:"🚫 Você está bloqueado",ephemeral:true});
-}
-
-await interaction.deferReply({ephemeral:true});
-
+// COMPRA
 const produto = PRODUTOS[interaction.customId];
 if(!produto) return;
 
+await interaction.deferReply({ephemeral:true});
+
 try{
 
-const pagamento = await payment.create({
+const mpPayment = await payment.create({
 body:{
 transaction_amount: produto.preco,
 description: produto.nome,
@@ -127,13 +129,15 @@ payer:{ email:`user${interaction.user.id}@gmail.com` }
 }
 });
 
-const id = pagamento.id;
-const copia = pagamento.point_of_interaction.transaction_data.qr_code;
-const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
+const id = mpPayment.id;
+const copia = mpPayment.point_of_interaction.transaction_data.qr_code;
+const qr = mpPayment.point_of_interaction.transaction_data.qr_code_base64;
 
+// SALVAR
 pagamentos[id] = {
 userId: interaction.user.id,
-produto
+produto,
+copia
 };
 
 // CRIAR TICKET
@@ -150,56 +154,72 @@ permissionOverwrites:[
 // EMBED
 let embed = new EmbedBuilder()
 .setTitle("💳 Pagamento PIX")
-.setDescription(`💰 ${produto.nome}\n💰 R$${produto.preco}\n\n📋 Copiar:\n\`\`\`\n${copia}\n\`\`\``)
+.setDescription(`💰 ${produto.nome}
+💰 R$${produto.preco}
+
+📋 Copie:
+\`\`\`
+${copia}
+\`\`\`
+`)
 .setColor("Green");
 
 // BOTÕES
-const botoes = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${id}`).setLabel("Copiar").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId(`paguei_${id}`).setLabel("Já paguei").setStyle(ButtonStyle.Success)
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setCustomId(`copiar_${id}`)
+.setLabel("📋 Copiar PIX")
+.setStyle(ButtonStyle.Primary),
+
+new ButtonBuilder()
+.setCustomId(`paguei_${id}`)
+.setLabel("✅ Já paguei")
+.setStyle(ButtonStyle.Success)
 );
 
-// QR só otimização
+// QR apenas otimização
 if(produto.tipo === "otimizacao"){
 const buffer = Buffer.from(qr,"base64");
 const file = new AttachmentBuilder(buffer,{name:"qr.png"});
 embed.setImage("attachment://qr.png");
 
-await canal.send({embeds:[embed],components:[botoes],files:[file]});
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row],
+files:[file]
+});
 }else{
-await canal.send({embeds:[embed],components:[botoes]});
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row]
+});
 }
 
-// TIMER
+// EXPIRAÇÃO
 setTimeout(()=>{
-canal.send("⏰ Pagamento expirado, fechando ticket...");
+canal.send("⏰ Pagamento expirado!");
 setTimeout(()=>canal.delete().catch(()=>{}),5000);
 },600000);
 
-interaction.editReply({content:`✅ Ticket criado: ${canal}`});
+interaction.editReply({
+content:`✅ Ticket criado: ${canal}`
+});
 
-}catch(e){
-console.log(e);
-interaction.editReply({content:"❌ Erro pagamento"});
-}
-}
-
-// COPIAR
-if(interaction.customId.startsWith("copiar_")){
-const id = interaction.customId.split("_")[1];
-const copia = pagamentos[id]?.copia;
-return interaction.reply({content:`📋 Copie:\n\`\`\`${copia}\`\`\``,ephemeral:true});
-}
-
-// PAGUEI
-if(interaction.customId.startsWith("paguei_")){
-return interaction.reply({content:"⏳ Aguardando confirmação automática...",ephemeral:true});
+}catch(err){
+console.log(err);
+interaction.editReply({
+content:"❌ Erro ao gerar pagamento"
+});
 }
 
 });
 
 // WEBHOOK
 app.post("/webhook",async(req,res)=>{
+
+try{
 
 if(req.body.type === "payment"){
 
@@ -217,11 +237,11 @@ const guild = client.guilds.cache.first();
 let entrega = "";
 
 if(info.produto.tipo === "auto"){
-entrega = CONTAS[Math.floor(Math.random()*CONTAS.length)];
+entrega = `🎮 Conta GTA:\n\`\`\`\n${CONTAS[Math.floor(Math.random()*CONTAS.length)]}\n\`\`\``;
 }
 
 if(info.produto.tipo === "link"){
-entrega = info.produto.link;
+entrega = `📦 Download:\n${info.produto.link}`;
 }
 
 if(info.produto.tipo === "otimizacao"){
@@ -229,22 +249,30 @@ entrega = "📦 Produto liberado!";
 }
 
 // ENVIAR
-await user.send(`✅ Pago!\n${entrega}`);
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
 
+// LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
 canalLogs.send({
 embeds:[new EmbedBuilder()
-.setTitle("💰 Venda")
+.setTitle("💰 Venda Aprovada")
 .setDescription(`<@${info.userId}> comprou ${info.produto.nome}`)
-.setColor("Green")]
+.setColor("Green")
+.setTimestamp()]
 });
 
 }
+
+}
+
+}catch(e){
+console.log(e);
 }
 
 res.sendStatus(200);
 });
 
 app.listen(3000);
+
 client.login(TOKEN);
