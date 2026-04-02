@@ -28,6 +28,7 @@ const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
+const CARGO_ADMIN = "1466621093799268443";
 
 // MERCADO PAGO
 const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
@@ -43,7 +44,6 @@ gta:{ preco:5, nome:"Conta GTA V", tipo:"auto" },
 sensi:{ preco:5, nome:"Pack Sensi", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
-// CONTAS GTA (INFINITO)
 const CONTAS = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -54,24 +54,20 @@ const CONTAS = [
 ];
 
 const pagamentos = {};
+const vendas = [];
+const blacklist = new Set();
 
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
-// PAINEL
+// ================= PAINEL LOJA =================
 client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 
 const embed = new EmbedBuilder()
-.setTitle("🚀 LOJA COMPLETA")
-.setDescription(`
-💻 Otimizações (FPS + desempenho)
-🎮 Contas GTA V
-🎯 Pack Sensi PRO
-
-👇 Clique abaixo para comprar
-`)
+.setTitle("🛒 LOJA OFICIAL")
+.setDescription("🔥 Produtos disponíveis abaixo")
 .setColor("Green");
 
 const row = new ActionRowBuilder().addComponents(
@@ -82,43 +78,85 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack Sensi R$5").setStyle(But
 
 msg.channel.send({embeds:[embed],components:[row]});
 }
+
+// ================= PAINEL ADMIN =================
+if(msg.content === "!admin"){
+
+if(!msg.member.roles.cache.has(CARGO_ADMIN)){
+return msg.reply("❌ Sem permissão");
+}
+
+const embed = new EmbedBuilder()
+.setTitle("⚙️ PAINEL ADMIN")
+.setDescription("Controle total da loja")
+.setColor("Red");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("ver_vendas").setLabel("📊 Ver vendas").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("forcar_entrega").setLabel("📦 Forçar entrega").setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId("banir_user").setLabel("🚫 Banir").setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId("desbanir_user").setLabel("✅ Desbanir").setStyle(ButtonStyle.Secondary)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
 });
 
-// INTERAÇÕES
-client.on("interactionCreate", async (interaction) => {
+// ================= INTERAÇÕES =================
+client.on("interactionCreate", async interaction => {
 
 if(!interaction.isButton()) return;
 
-// BOTÃO COPIAR
+// COPIAR PIX
 if(interaction.customId.startsWith("copiar_")){
 const id = interaction.customId.split("_")[1];
-const data = pagamentos[id];
-
-if(!data){
-return interaction.reply({content:"❌ Pagamento não encontrado",ephemeral:true});
-}
-
 return interaction.reply({
-content:`📋 Copie o PIX:\n\`\`\`\n${data.copia}\n\`\`\``,
+content:`📋 Copie:\n\`\`\`\n${pagamentos[id].copia}\n\`\`\``,
 ephemeral:true
 });
 }
 
-// BOTÃO PAGUEI
+// JÁ PAGUEI (verificação manual rápida)
 if(interaction.customId.startsWith("paguei_")){
+const id = interaction.customId.split("_")[1];
+
+const data = await payment.get({id});
+
+if(data.status === "approved"){
+entregar(id);
+return interaction.reply({content:"✅ Pagamento confirmado!",ephemeral:true});
+}else{
+return interaction.reply({content:"❌ Ainda não caiu, aguarde...",ephemeral:true});
+}
+}
+
+// ADMIN
+if(interaction.customId === "ver_vendas"){
 return interaction.reply({
-content:"⏳ Aguardando confirmação automática...",
+content:`💰 Total vendas: ${vendas.length}`,
 ephemeral:true
 });
+}
+
+if(interaction.customId === "banir_user"){
+blacklist.add(interaction.user.id);
+return interaction.reply({content:"🚫 Usuário banido",ephemeral:true});
+}
+
+if(interaction.customId === "desbanir_user"){
+blacklist.delete(interaction.user.id);
+return interaction.reply({content:"✅ Usuário desbanido",ephemeral:true});
 }
 
 // COMPRA
 const produto = PRODUTOS[interaction.customId];
 if(!produto) return;
 
-await interaction.deferReply({ephemeral:true});
+if(blacklist.has(interaction.user.id)){
+return interaction.reply({content:"🚫 Você está bloqueado",ephemeral:true});
+}
 
-try{
+await interaction.deferReply({ephemeral:true});
 
 const mpPayment = await payment.create({
 body:{
@@ -133,14 +171,13 @@ const id = mpPayment.id;
 const copia = mpPayment.point_of_interaction.transaction_data.qr_code;
 const qr = mpPayment.point_of_interaction.transaction_data.qr_code_base64;
 
-// SALVAR
 pagamentos[id] = {
 userId: interaction.user.id,
 produto,
 copia
 };
 
-// CRIAR TICKET
+// criar ticket
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.id}`,
 type:0,
@@ -151,125 +188,79 @@ permissionOverwrites:[
 ]
 });
 
-// EMBED
+// embed
 let embed = new EmbedBuilder()
-.setTitle("💳 Pagamento PIX")
-.setDescription(`💰 ${produto.nome}
-💰 R$${produto.preco}
-
-📋 Copie:
-\`\`\`
-${copia}
-\`\`\`
-`)
+.setTitle("💳 PAGAMENTO PIX")
+.setDescription(`💰 ${produto.nome}\n💰 R$${produto.preco}\n\n\`\`\`\n${copia}\n\`\`\``)
 .setColor("Green");
 
-// BOTÕES
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder()
-.setCustomId(`copiar_${id}`)
-.setLabel("📋 Copiar PIX")
-.setStyle(ButtonStyle.Primary),
-
-new ButtonBuilder()
-.setCustomId(`paguei_${id}`)
-.setLabel("✅ Já paguei")
-.setStyle(ButtonStyle.Success)
+new ButtonBuilder().setCustomId(`copiar_${id}`).setLabel("📋 Copiar").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId(`paguei_${id}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
 );
 
-// QR apenas otimização
 if(produto.tipo === "otimizacao"){
-const buffer = Buffer.from(qr,"base64");
-const file = new AttachmentBuilder(buffer,{name:"qr.png"});
+const file = new AttachmentBuilder(Buffer.from(qr,"base64"),{name:"qr.png"});
 embed.setImage("attachment://qr.png");
-
-await canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row],
-files:[file]
-});
+canal.send({embeds:[embed],components:[row],files:[file]});
 }else{
-await canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row]
-});
+canal.send({embeds:[embed],components:[row]});
 }
 
-// EXPIRAÇÃO
+interaction.editReply({content:`✅ Ticket: ${canal}`});
+
+// expira
 setTimeout(()=>{
-canal.send("⏰ Pagamento expirado!");
+canal.send("⏰ Expirado!");
 setTimeout(()=>canal.delete().catch(()=>{}),5000);
 },600000);
 
-interaction.editReply({
-content:`✅ Ticket criado: ${canal}`
 });
 
-}catch(err){
-console.log(err);
-interaction.editReply({
-content:"❌ Erro ao gerar pagamento"
-});
-}
+// ================= ENTREGA =================
+async function entregar(id){
 
-});
-
-// WEBHOOK
-app.post("/webhook",async(req,res)=>{
-
-try{
-
-if(req.body.type === "payment"){
-
-const data = await payment.get({id:req.body.data.id});
-
-if(data.status === "approved"){
-
-const info = pagamentos[data.id];
+const info = pagamentos[id];
 if(!info) return;
 
 const user = await client.users.fetch(info.userId);
-const guild = client.guilds.cache.first();
 
-// ENTREGA
 let entrega = "";
 
 if(info.produto.tipo === "auto"){
-entrega = `🎮 Conta GTA:\n\`\`\`\n${CONTAS[Math.floor(Math.random()*CONTAS.length)]}\n\`\`\``;
+entrega = CONTAS[Math.floor(Math.random()*CONTAS.length)];
 }
 
 if(info.produto.tipo === "link"){
-entrega = `📦 Download:\n${info.produto.link}`;
+entrega = info.produto.link;
 }
 
-if(info.produto.tipo === "otimizacao"){
-entrega = "📦 Produto liberado!";
-}
-
-// ENVIAR
 await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
+
+vendas.push({
+user:info.userId,
+produto:info.produto.nome
+});
 
 // LOG
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
 canalLogs.send({
 embeds:[new EmbedBuilder()
-.setTitle("💰 Venda Aprovada")
+.setTitle("💰 Venda")
 .setDescription(`<@${info.userId}> comprou ${info.produto.nome}`)
-.setColor("Green")
-.setTimestamp()]
+.setColor("Green")]
 });
-
 }
 
+// ================= WEBHOOK =================
+app.post("/webhook",async(req,res)=>{
+if(req.body.type === "payment"){
+const data = await payment.get({id:req.body.data.id});
+if(data.status === "approved"){
+entregar(data.id);
 }
-
-}catch(e){
-console.log(e);
 }
-
 res.sendStatus(200);
 });
 
