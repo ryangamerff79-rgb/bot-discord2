@@ -98,6 +98,7 @@ if(!produto) return;
 
 await interaction.reply({content:"⏳ Gerando pagamento...",ephemeral:true});
 
+// 🔥 PAGAMENTO CORRIGIDO
 let pg;
 
 try{
@@ -117,12 +118,25 @@ produto: interaction.customId
 console.log("ERRO MP:", err);
 
 return interaction.editReply({
-content:"❌ Erro ao gerar pagamento. Verifique o token MP."
+content:"❌ Erro ao gerar pagamento. Verifique MP_TOKEN."
 });
 }
 
-const pix = pg.point_of_interaction.transaction_data.qr_code;
-const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
+// 🔥 PROTEÇÃO (ANTI BUG)
+if(!pg || !pg.point_of_interaction){
+return interaction.editReply({
+content:"❌ Erro ao gerar PIX. Tente novamente."
+});
+}
+
+const pix = pg.point_of_interaction?.transaction_data?.qr_code;
+const qr = pg.point_of_interaction?.transaction_data?.qr_code_base64;
+
+if(!pix){
+return interaction.editReply({
+content:"❌ Mercado Pago não retornou o PIX."
+});
+}
 
 // ticket
 const canal = await interaction.guild.channels.create({
@@ -161,12 +175,17 @@ new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").set
 new ButtonBuilder().setCustomId("paguei").setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
 );
 
-await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row],files});
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row],
+files
+});
 
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
 }catch(err){
-console.log("ERRO:",err);
+console.log("ERRO GERAL:",err);
 }
 });
 
