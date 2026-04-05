@@ -6,7 +6,8 @@ ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
 EmbedBuilder,
-AttachmentBuilder
+AttachmentBuilder,
+ComponentType
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -19,8 +20,7 @@ const client = new Client({
 intents:[
 GatewayIntentBits.Guilds,
 GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent,
-GatewayIntentBits.DirectMessages
+GatewayIntentBits.MessageContent
 ]
 });
 
@@ -31,17 +31,23 @@ const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_FEEDBACK = "1467351899497041942";
 
-// MP
-const clientMP = new MercadoPagoConfig({ accessToken: MP_TOKEN });
+// MERCADO PAGO
+const clientMP = new MercadoPagoConfig({
+accessToken: MP_TOKEN
+});
 const payment = new Payment(clientMP);
 
 // PRODUTOS
 const PRODUTOS = {
+opt5:{ preco:5, nome:"Otimização Básica", tipo:"otimizacao" },
+opt10:{ preco:10, nome:"Otimização Avançada", tipo:"otimizacao" },
 opt20:{ preco:20, nome:"Otimização Suprema", tipo:"otimizacao" },
+
 gta:{ preco:5, nome:"Conta GTA V", tipo:"auto" },
 sensi:{ preco:5, nome:"Pack Sensi", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
+// CONTAS GTA INFINITAS
 const CONTAS_GTA = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -54,39 +60,59 @@ const CONTAS_GTA = [
 const pagamentos = {};
 
 client.once("ready",()=>{
-console.log(`BOT ONLINE: ${client.user.tag}`);
+console.log(`✅ BOT ONLINE: ${client.user.tag}`);
 });
 
-// PAINEL
+// ================= PAINÉIS =================
 client.on("messageCreate",async msg=>{
+
 if(msg.content === "!painel"){
 const embed = new EmbedBuilder()
-.setTitle("🔥 LOJA OFICIAL")
-.setDescription(`
-🚀 **Otimização Suprema — R$20**
-🎮 **Conta GTA V — R$5**
-🎯 **Pack Sensi — R$5**
-
-👇 Clique abaixo para comprar
-`)
+.setTitle("🚀 Imperial Otimizações")
+.setDescription("Escolha sua otimização:")
 .setColor("Green");
 
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("opt20").setLabel("Otimização").setStyle(ButtonStyle.Danger),
-new ButtonBuilder().setCustomId("gta").setLabel("GTA V").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("sensi").setLabel("Sensi").setStyle(ButtonStyle.Success)
+new ButtonBuilder().setCustomId("opt5").setLabel("Básica R$5").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("opt10").setLabel("Avançada R$10").setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId("opt20").setLabel("Suprema R$20").setStyle(ButtonStyle.Danger)
 );
 
 msg.channel.send({embeds:[embed],components:[row]});
 }
+
+if(msg.content === "!painelgta"){
+const embed = new EmbedBuilder()
+.setTitle("🎮 GTA V")
+.setDescription("🔥 Conta GTA V apenas R$5");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("gta").setLabel("Comprar").setStyle(ButtonStyle.Primary)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
+
+if(msg.content === "!painelsensi"){
+const embed = new EmbedBuilder()
+.setTitle("🎯 Pack Sensi")
+.setDescription("🔥 Melhor sensi por R$5");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("sensi").setLabel("Comprar").setStyle(ButtonStyle.Success)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
+}
+
 });
 
-// INTERAÇÃO
+// ================= COMPRA =================
 client.on("interactionCreate",async interaction=>{
+
 if(!interaction.isButton()) return;
 
 const produto = PRODUTOS[interaction.customId];
-
 if(!produto) return;
 
 await interaction.reply({content:"⏳ Gerando pagamento...", ephemeral:true});
@@ -102,16 +128,16 @@ payer:{ email:`user${interaction.user.id}@gmail.com` }
 }
 });
 
-const copia = pagamento.point_of_interaction.transaction_data.qr_code;
-const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 const idPagamento = pagamento.id;
+const copiaecola = pagamento.point_of_interaction.transaction_data.qr_code;
+const qrBase64 = pagamento.point_of_interaction.transaction_data.qr_code_base64;
 
 pagamentos[idPagamento] = {
 userId: interaction.user.id,
-produto
+produto: produto
 };
 
-// CRIA TICKET
+// criar ticket
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -123,77 +149,91 @@ permissionOverwrites:[
 });
 
 // QR
-const buffer = Buffer.from(qr, "base64");
-const attachment = new AttachmentBuilder(buffer, { name:"qrcode.png" });
+let files = [];
+if(produto.tipo === "otimizacao"){
+const buffer = Buffer.from(qrBase64, "base64");
+files.push(new AttachmentBuilder(buffer,{name:"qrcode.png"}));
+}
 
+// embed
 const embed = new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
-.setDescription(`💰 Produto: ${produto.nome}
-💰 Valor: R$${produto.preco}
+.setDescription(`💰 ${produto.nome}
+💰 R$${produto.preco}
 
-📋 Copie o código abaixo:
+📋 COPIE O PIX:
 \`\`\`
-${copia}
+${copiaecola}
 \`\`\``)
-.setImage("attachment://qrcode.png")
 .setColor("Green");
 
-// BOTÕES
-const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder()
-.setCustomId("copiar_pix")
-.setLabel("📋 Copiar PIX")
-.setStyle(ButtonStyle.Secondary),
+if(files.length) embed.setImage("attachment://qrcode.png");
 
-new ButtonBuilder()
-.setCustomId(`ja_paguei_${idPagamento}`)
-.setLabel("✅ Já paguei")
-.setStyle(ButtonStyle.Success)
+// BOTÕES FUNCIONANDO
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId(`copiar_${idPagamento}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId(`ja_paguei_${idPagamento}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
 );
 
 await canal.send({
 content:`<@${interaction.user.id}>`,
 embeds:[embed],
 components:[row],
-files:[attachment]
+files
 });
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// TIMER
-setTimeout(async()=>{
-if(pagamentos[idPagamento]){
-canal.send("⏰ Pagamento expirado!");
-canal.delete();
-delete pagamentos[idPagamento];
-}
-}, 600000);
+// AUTO DELETE 10 MIN
+setTimeout(()=>{
+if(canal) canal.delete().catch(()=>{});
+},600000);
 
-}catch(err){
-console.log(err);
-interaction.editReply({content:"❌ Erro no pagamento"});
-}
-
-// BOTÃO COPIAR
-if(interaction.customId === "copiar_pix"){
-return interaction.reply({content:"📋 Copie o código acima 👆", ephemeral:true});
-}
-
-// BOTÃO JÁ PAGUEI
-if(interaction.customId.startsWith("ja_paguei_")){
-return interaction.reply({content:"🔎 Verificando pagamento...", ephemeral:true});
+}catch(e){
+console.log(e);
+interaction.editReply({content:"❌ Erro ao gerar pagamento"});
 }
 
 });
 
-// WEBHOOK
+// ================= BOTÕES =================
+client.on("interactionCreate", async interaction=>{
+
+if(!interaction.isButton()) return;
+
+// COPIAR PIX
+if(interaction.customId.startsWith("copiar_")){
+const id = interaction.customId.split("_")[1];
+const info = pagamentos[id];
+if(!info) return;
+
+const pagamentoInfo = await payment.get({id});
+const copia = pagamentoInfo.point_of_interaction.transaction_data.qr_code;
+
+return interaction.reply({
+content:`📋 Copie abaixo:\n\`\`\`\n${copia}\n\`\`\``,
+ephemeral:true
+});
+}
+
+// JA PAGUEI
+if(interaction.customId.startsWith("ja_paguei_")){
+return interaction.reply({
+content:"⏳ Aguardando confirmação automática do pagamento...",
+ephemeral:true
+});
+}
+
+});
+
+// ================= WEBHOOK =================
 app.post("/webhook", async (req,res)=>{
 
 try{
 
 if(req.body.type === "payment"){
 
-const pagamentoInfo = await payment.get({ id:req.body.data.id });
+const pagamentoInfo = await payment.get({id:req.body.data.id});
 
 if(pagamentoInfo.status === "approved"){
 
@@ -201,14 +241,13 @@ const info = pagamentos[pagamentoInfo.id];
 if(!info) return;
 
 const user = await client.users.fetch(info.userId);
-const guild = client.guilds.cache.first();
 
 // ENTREGA
 let entrega = "";
 
 if(info.produto.tipo === "auto"){
 const conta = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
-entrega = `🎮 Conta:\n\`\`\`${conta}\`\`\``;
+entrega = `🎮 Conta GTA:\n\`\`\`\n${conta}\n\`\`\``;
 }
 
 if(info.produto.tipo === "link"){
@@ -216,39 +255,36 @@ entrega = `📦 Download:\n${info.produto.link}`;
 }
 
 if(info.produto.tipo === "otimizacao"){
-entrega = "🚀 Sua otimização será enviada!";
+entrega = "✅ Sua otimização será entregue!";
 }
 
 // DM + AVALIAÇÃO
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}
+await user.send(`${entrega}
 
-⭐ Avalie de 1 a 10 e escreva um comentário:`);
-
-// esperar resposta
-const collector = user.dmChannel.createMessageCollector({ time:600000 });
-
-collector.on("collect",async m=>{
-const canalFeed = await client.channels.fetch(CANAL_FEEDBACK);
-
-canalFeed.send(`⭐ Avaliação de <@${user.id}>
-📝 ${m.content}`);
-collector.stop();
-});
+⭐ Avalie de 1 a 10 respondendo aqui!`).catch(()=>{});
 
 // LOG
-const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Venda: ${info.produto.nome} | R$${info.produto.preco}`);
+const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-delete pagamentos[pagamentoInfo.id];
+canalLogs.send({
+embeds:[
+new EmbedBuilder()
+.setTitle("💰 Venda")
+.setDescription(`Cliente: <@${info.userId}>
+Produto: ${info.produto.nome}`)
+.setColor("Green")
+]
+});
 
 }
 
 }
 
-}catch(e){ console.log(e); }
+}catch(e){console.log(e);}
 
 res.sendStatus(200);
 });
 
 app.listen(3000);
+
 client.login(TOKEN);
