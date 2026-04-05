@@ -43,12 +43,12 @@ const pagamentos = {};
 
 // PRODUTOS
 const PRODUTOS = {
-opt5:{ preco:5, nome:"🚀 +50 FPS", tipo:"otimizacao" },
+opt5:{ preco:5, nome:"🚀 limpeza", tipo:"otimizacao" },
 opt10:{ preco:10, nome:"⚡ FPS Estável", tipo:"otimizacao" },
 opt20:{ preco:20, nome:"👑 Máximo Desempenho", tipo:"otimizacao" },
 
 gta:{ preco:5, nome:"🎮 Conta GTA V", tipo:"auto" },
-sensi:{ preco:5, nome:"🎯 Sensi PRO", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
+sensi:{ preco:5, nome:"🎯 pack de Sensi ", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
 const CONTAS_GTA = [
@@ -71,7 +71,7 @@ client.on("messageCreate",async msg=>{
 if(msg.content === "!painel"){
 msg.channel.send({
 embeds:[new EmbedBuilder()
-.setTitle("🚀 +50 FPS NO SEU PC")
+.setTitle("🚀 limpeza")
 .setDescription("🔥 SEM LAG | MAIS FPS\n💰 A partir de R$5")
 .setColor("Green")],
 components:[new ActionRowBuilder().addComponents(
