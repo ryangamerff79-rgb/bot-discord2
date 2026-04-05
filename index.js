@@ -96,13 +96,14 @@ if(!interaction.isButton()) return;
 const produto = PRODUTOS[interaction.customId];
 if(!produto) return;
 
-// resposta rápida
 await interaction.reply({content:"⏳ Gerando pagamento...",ephemeral:true});
 
-// pagamento com metadata
-const pg = await payment.create({
+let pg;
+
+try{
+pg = await payment.create({
 body:{
-transaction_amount: produto.preco,
+transaction_amount: Number(produto.preco),
 description: produto.nome,
 payment_method_id:"pix",
 payer:{email:`user${interaction.user.id}@gmail.com`},
@@ -112,6 +113,13 @@ produto: interaction.customId
 }
 }
 });
+}catch(err){
+console.log("ERRO MP:", err);
+
+return interaction.editReply({
+content:"❌ Erro ao gerar pagamento. Verifique o token MP."
+});
+}
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
 const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
@@ -139,7 +147,7 @@ ${pix}
 \`\`\``)
 .setColor("Green");
 
-// QR só otimização
+// QR
 let files=[];
 if(produto.tipo==="otimizacao"){
 const buffer=Buffer.from(qr,"base64");
@@ -149,8 +157,8 @@ embed.setImage("attachment://qr.png");
 
 // botões
 const row=new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId(`paguei`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
+new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("paguei").setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
 );
 
 await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row],files});
@@ -158,7 +166,7 @@ await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
 }catch(err){
-console.log(err);
+console.log("ERRO:",err);
 }
 });
 
