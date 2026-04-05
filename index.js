@@ -49,7 +49,6 @@ fs.writeFileSync("dados.json",JSON.stringify({vendas,dinheiro},null,2));
 const mp = new MercadoPagoConfig({accessToken:MP_TOKEN});
 const payment = new Payment(mp);
 
-// PRODUTOS
 const PRODUTOS={
 opt5:{preco:5,nome:"Otimização Básica",tipo:"otimizacao"},
 opt10:{preco:10,nome:"Otimização Avançada",tipo:"otimizacao"},
@@ -86,8 +85,6 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 });
 
 // ================= INTERAÇÃO =================
-client.removeAllListeners("interactionCreate");
-
 client.on("interactionCreate", async interaction => {
 try{
 
@@ -98,45 +95,32 @@ if(!produto) return;
 
 await interaction.reply({content:"⏳ Gerando pagamento...",ephemeral:true});
 
-// 🔥 PAGAMENTO CORRIGIDO
 let pg;
 
 try{
 pg = await payment.create({
 body:{
-transaction_amount: Number(produto.preco),
-description: produto.nome,
+transaction_amount:Number(produto.preco),
+description:produto.nome,
 payment_method_id:"pix",
 payer:{email:`user${interaction.user.id}@gmail.com`},
 metadata:{
-user_id: interaction.user.id,
-produto: interaction.customId
+user_id:interaction.user.id,
+produto:interaction.customId
 }
 }
 });
 }catch(err){
-console.log("ERRO MP:", err);
-
-return interaction.editReply({
-content:"❌ Erro ao gerar pagamento. Verifique MP_TOKEN."
-});
+console.log("ERRO MP:",err);
+return interaction.editReply({content:"❌ Erro ao gerar pagamento"});
 }
 
-// 🔥 PROTEÇÃO (ANTI BUG)
-if(!pg || !pg.point_of_interaction){
-return interaction.editReply({
-content:"❌ Erro ao gerar PIX. Tente novamente."
-});
+if(!pg?.point_of_interaction){
+return interaction.editReply({content:"❌ Erro ao gerar PIX"});
 }
 
-const pix = pg.point_of_interaction?.transaction_data?.qr_code;
-const qr = pg.point_of_interaction?.transaction_data?.qr_code_base64;
-
-if(!pix){
-return interaction.editReply({
-content:"❌ Mercado Pago não retornou o PIX."
-});
-}
+const pix = pg.point_of_interaction.transaction_data.qr_code;
+const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
 
 // ticket
 const canal = await interaction.guild.channels.create({
@@ -163,30 +147,63 @@ ${pix}
 
 // QR
 let files=[];
-if(produto.tipo==="otimizacao"){
+if(qr){
 const buffer=Buffer.from(qr,"base64");
 files.push(new AttachmentBuilder(buffer,{name:"qr.png"}));
 embed.setImage("attachment://qr.png");
 }
 
-// botões
+// botões (AGORA CORRIGIDO)
 const row=new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("paguei").setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
+new ButtonBuilder().setCustomId(`copiar_${pg.id}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId(`paguei_${pg.id}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
 );
 
-await canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row],
-files
-});
+await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row],files});
 
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
 }catch(err){
 console.log("ERRO GERAL:",err);
 }
+});
+
+// ================= BOTÃO COPIAR =================
+client.on("interactionCreate", async interaction=>{
+if(!interaction.isButton()) return;
+
+if(interaction.customId.startsWith("copiar_")){
+
+const id = interaction.customId.split("_")[1];
+
+const pg = await payment.get({id});
+
+const pix = pg.point_of_interaction?.transaction_data?.qr_code;
+
+if(!pix){
+return interaction.reply({content:"❌ PIX não encontrado",ephemeral:true});
+}
+
+const modal=new ModalBuilder()
+.setCustomId("pix_modal")
+.setTitle("📋 Copiar PIX");
+
+const input=new TextInputBuilder()
+.setCustomId("pix")
+.setLabel("Segure para copiar")
+.setStyle(TextInputStyle.Paragraph)
+.setValue(pix);
+
+modal.addComponents(new ActionRowBuilder().addComponents(input));
+
+return interaction.showModal(modal);
+}
+
+// botão paguei
+if(interaction.customId.startsWith("paguei_")){
+return interaction.reply({content:"⏳ Aguardando confirmação automática...",ephemeral:true});
+}
+
 });
 
 // ================= WEBHOOK =================
