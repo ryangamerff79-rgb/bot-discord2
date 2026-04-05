@@ -105,25 +105,24 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Comprar").setStyle(ButtonStyl
 });
 }
 
-if(msg.content==="!ranking"){
-let top=Object.entries(vendas).sort((a,b)=>b[1]-a[1]).slice(0,10)
-.map((x,i)=>`#${i+1} <@${x[0]}> — ${x[1]} compras`).join("\n");
-msg.channel.send(`🏆 Ranking:\n${top||"Sem vendas"}`);
-}
-
 });
 
+// ================= INTERAÇÃO ÚNICA =================
+client.removeAllListeners("interactionCreate");
+
+client.on("interactionCreate", async interaction => {
+try{
+
+if(!interaction.isButton()) return;
+
 // ================= COMPRA =================
-client.on("interactionCreate",async interaction=>{
+if(PRODUTOS[interaction.customId]){
 
-if(interaction.isButton()){
-
-const produto=PRODUTOS[interaction.customId];
-if(!produto) return;
+const produto = PRODUTOS[interaction.customId];
 
 await interaction.reply({content:"⏳ Gerando pagamento...",ephemeral:true});
 
-const pg=await payment.create({
+const pg = await payment.create({
 body:{
 transaction_amount:produto.preco,
 description:produto.nome,
@@ -170,33 +169,34 @@ files.push(new AttachmentBuilder(buffer,{name:"qr.png"}));
 embed.setImage("attachment://qr.png");
 }
 
-// botões
 const row=new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId(`copiar_${id}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId(`paguei_${id}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setStyle(ButtonStyle.Link).setURL("https://www.google.com/search?q=app+banco").setLabel("🏦 Abrir App Banco")
+new ButtonBuilder().setCustomId(`paguei_${id}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
 );
 
 await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row],files});
 
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
-// aviso 8 min
 setTimeout(()=>canal.send("⚠️ Pagamento expirando..."),480000);
-
-// delete 10 min
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
 
+return;
 }
 
-// ================= COPIAR (MODAL) =================
-if(interaction.isButton() && interaction.customId.startsWith("copiar_")){
+// ================= COPIAR =================
+if(interaction.customId.startsWith("copiar_")){
 
 const id=interaction.customId.split("_")[1];
 const info=pagamentos[id];
-if(!info) return;
 
-const modal=new ModalBuilder().setCustomId("pix_modal").setTitle("📋 Copiar PIX");
+if(!info){
+return interaction.reply({content:"❌ PIX não encontrado",ephemeral:true});
+}
+
+const modal=new ModalBuilder()
+.setCustomId("pix_modal")
+.setTitle("📋 Copiar PIX");
 
 const input=new TextInputBuilder()
 .setCustomId("pix")
@@ -209,11 +209,19 @@ modal.addComponents(new ActionRowBuilder().addComponents(input));
 return interaction.showModal(modal);
 }
 
-// já paguei
-if(interaction.isButton() && interaction.customId.startsWith("paguei_")){
+// ================= PAGUEI =================
+if(interaction.customId.startsWith("paguei_")){
 return interaction.reply({content:"⏳ Aguardando confirmação automática...",ephemeral:true});
 }
 
+}catch(err){
+console.log("ERRO:",err);
+
+if(!interaction.replied){
+interaction.reply({content:"❌ Erro interno",ephemeral:true});
+}
+
+}
 });
 
 // ================= WEBHOOK =================
@@ -248,13 +256,13 @@ dinheiro[user.id]=(dinheiro[user.id]||0)+info.produto.preco;
 salvar();
 
 // DM
-await user.send(`✅ Compra aprovada!\n\n${entrega}\n\n⭐ Avalie de 1 a 10`).catch(()=>{});
+await user.send(`✅ Compra aprovada!\n\n${entrega}`).catch(()=>{});
 
 // logs
 const canalLogs=await client.channels.fetch(CANAL_LOGS);
 canalLogs.send(`💰 Venda: <@${user.id}> - ${info.produto.nome}`);
 
-// atualizar ranking
+// ranking
 const canalRank=await client.channels.fetch(CANAL_RANK);
 let top=Object.entries(vendas).sort((a,b)=>b[1]-a[1]).slice(0,10)
 .map((x,i)=>`#${i+1} <@${x[0]}> — ${x[1]} compras`).join("\n");
@@ -265,17 +273,6 @@ canalRank.send(`🏆 TOP:\n${top}`);
 }
 
 res.sendStatus(200);
-});
-
-// ================= FEEDBACK =================
-client.on("messageCreate",async msg=>{
-if(msg.channel.type===1){
-const nota=parseInt(msg.content);
-if(!isNaN(nota)){
-const canal=await client.channels.fetch(CANAL_FEEDBACK);
-canal.send(`⭐ ${nota}/10 - ${msg.author}`);
-}
-}
 });
 
 app.listen(3000);
