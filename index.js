@@ -19,7 +19,8 @@ const client = new Client({
 intents:[
 GatewayIntentBits.Guilds,
 GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent
+GatewayIntentBits.MessageContent,
+GatewayIntentBits.DirectMessages
 ]
 });
 
@@ -28,27 +29,17 @@ const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
+const CANAL_FEEDBACK = "1467351899497041942";
 
-// MERCADO PAGO
-const clientMP = new MercadoPagoConfig({
-accessToken: MP_TOKEN
-});
+// MP
+const clientMP = new MercadoPagoConfig({ accessToken: MP_TOKEN });
 const payment = new Payment(clientMP);
-
-// SISTEMAS
-let vendas = 0;
-let ranking = {};
-let ticketsAbertos = new Set();
-const pagamentos = {};
 
 // PRODUTOS
 const PRODUTOS = {
-opt5:{ preco:5, nome:"🚀 limpeza", tipo:"otimizacao" },
-opt10:{ preco:10, nome:"⚡ FPS Estável", tipo:"otimizacao" },
-opt20:{ preco:20, nome:"👑 Máximo Desempenho", tipo:"otimizacao" },
-
-gta:{ preco:5, nome:"🎮 Conta GTA V", tipo:"auto" },
-sensi:{ preco:5, nome:"🎯 pack de Sensi ", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
+opt20:{ preco:20, nome:"Otimização Suprema", tipo:"otimizacao" },
+gta:{ preco:5, nome:"Conta GTA V", tipo:"auto" },
+sensi:{ preco:5, nome:"Pack Sensi", tipo:"link", link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
 const CONTAS_GTA = [
@@ -60,62 +51,49 @@ const CONTAS_GTA = [
 "msfaraz69:blj55566"
 ];
 
-// READY
+const pagamentos = {};
+
 client.once("ready",()=>{
 console.log(`BOT ONLINE: ${client.user.tag}`);
 });
 
 // PAINEL
 client.on("messageCreate",async msg=>{
-
 if(msg.content === "!painel"){
-msg.channel.send({
-embeds:[new EmbedBuilder()
-.setTitle("🚀 limpeza")
-.setDescription("🔥 SEM LAG | MAIS FPS\n💰 A partir de R$5")
-.setColor("Green")],
-components:[new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("opt5").setLabel("R$5").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("opt10").setLabel("R$10").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId("opt20").setLabel("R$20").setStyle(ButtonStyle.Danger)
-)]
-});
+const embed = new EmbedBuilder()
+.setTitle("🔥 LOJA OFICIAL")
+.setDescription(`
+🚀 **Otimização Suprema — R$20**
+🎮 **Conta GTA V — R$5**
+🎯 **Pack Sensi — R$5**
+
+👇 Clique abaixo para comprar
+`)
+.setColor("Green");
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId("opt20").setLabel("Otimização").setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId("gta").setLabel("GTA V").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("sensi").setLabel("Sensi").setStyle(ButtonStyle.Success)
+);
+
+msg.channel.send({embeds:[embed],components:[row]});
 }
-
-if(msg.content === "!rank"){
-let texto = "🏆 Ranking de Compras:\n\n";
-
-const top = Object.entries(ranking)
-.sort((a,b)=>b[1]-a[1])
-.slice(0,10);
-
-top.forEach(([id,qtd],i)=>{
-texto += `${i+1}. <@${id}> - ${qtd} compras\n`;
 });
 
-msg.channel.send(texto || "Sem dados ainda.");
-}
-
-});
-
-// COMPRA
+// INTERAÇÃO
 client.on("interactionCreate",async interaction=>{
-
 if(!interaction.isButton()) return;
 
 const produto = PRODUTOS[interaction.customId];
+
 if(!produto) return;
 
-// ANTI SPAM
-if(ticketsAbertos.has(interaction.user.id)){
-return interaction.reply({content:"❌ Você já tem um ticket aberto!",ephemeral:true});
-}
-
-await interaction.deferReply({ephemeral:true});
+await interaction.reply({content:"⏳ Gerando pagamento...", ephemeral:true});
 
 try{
 
-const pagamentoMP = await payment.create({
+const pagamento = await payment.create({
 body:{
 transaction_amount: produto.preco,
 description: produto.nome,
@@ -124,22 +102,18 @@ payer:{ email:`user${interaction.user.id}@gmail.com` }
 }
 });
 
-const id = pagamentoMP.id;
-const copia = pagamentoMP.point_of_interaction.transaction_data.qr_code;
-const qr = pagamentoMP.point_of_interaction.transaction_data.qr_code_base64;
+const copia = pagamento.point_of_interaction.transaction_data.qr_code;
+const qr = pagamento.point_of_interaction.transaction_data.qr_code_base64;
+const idPagamento = pagamento.id;
 
-pagamentos[id] = {
+pagamentos[idPagamento] = {
 userId: interaction.user.id,
-produto,
-canalId:null,
-copia
+produto
 };
 
-ticketsAbertos.add(interaction.user.id);
-
-// CRIAR TICKET
+// CRIA TICKET
 const canal = await interaction.guild.channels.create({
-name:`ticket-${interaction.user.id}`,
+name:`ticket-${interaction.user.username}`,
 type:0,
 parent:CATEGORIA_ID,
 permissionOverwrites:[
@@ -148,78 +122,66 @@ permissionOverwrites:[
 ]
 });
 
-pagamentos[id].canalId = canal.id;
+// QR
+const buffer = Buffer.from(qr, "base64");
+const attachment = new AttachmentBuilder(buffer, { name:"qrcode.png" });
 
-// EMBED
-let embed = new EmbedBuilder()
+const embed = new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
-.setDescription(`💰 ${produto.nome}
-💰 R$${produto.preco}
+.setDescription(`💰 Produto: ${produto.nome}
+💰 Valor: R$${produto.preco}
 
-📋 Copie:
+📋 Copie o código abaixo:
 \`\`\`
 ${copia}
 \`\`\``)
+.setImage("attachment://qrcode.png")
 .setColor("Green");
 
 // BOTÕES
-const botoes = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${id}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Secondary),
-new ButtonBuilder().setCustomId(`paguei_${id}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success),
-new ButtonBuilder().setCustomId(`fechar_${id}`).setLabel("🔒 Fechar").setStyle(ButtonStyle.Danger)
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder()
+.setCustomId("copiar_pix")
+.setLabel("📋 Copiar PIX")
+.setStyle(ButtonStyle.Secondary),
+
+new ButtonBuilder()
+.setCustomId(`ja_paguei_${idPagamento}`)
+.setLabel("✅ Já paguei")
+.setStyle(ButtonStyle.Success)
 );
 
-// QR só otimização
-if(produto.tipo === "otimizacao"){
-const buffer = Buffer.from(qr,"base64");
-const file = new AttachmentBuilder(buffer,{name:"pix.png"});
-embed.setImage("attachment://pix.png");
-
-canal.send({embeds:[embed],components:[botoes],files:[file]});
-}else{
-canal.send({embeds:[embed],components:[botoes]});
-}
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row],
+files:[attachment]
+});
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// AUTO DELETE 10 MIN
-setTimeout(()=>{
-if(canal){
-canal.delete().catch(()=>{});
-ticketsAbertos.delete(interaction.user.id);
+// TIMER
+setTimeout(async()=>{
+if(pagamentos[idPagamento]){
+canal.send("⏰ Pagamento expirado!");
+canal.delete();
+delete pagamentos[idPagamento];
 }
-},600000);
+}, 600000);
 
-}catch(e){
-console.log(e);
+}catch(err){
+console.log(err);
 interaction.editReply({content:"❌ Erro no pagamento"});
 }
 
-});
-
-// BOTÕES
-client.on("interactionCreate",async interaction=>{
-
-if(!interaction.isButton()) return;
-
-if(interaction.customId.startsWith("copiar_")){
-const id = interaction.customId.split("_")[1];
-const copia = pagamentos[id]?.copia;
-
-return interaction.reply({
-content:`📋 Copie:\n\`\`\`\n${copia}\n\`\`\``,
-ephemeral:true
-});
+// BOTÃO COPIAR
+if(interaction.customId === "copiar_pix"){
+return interaction.reply({content:"📋 Copie o código acima 👆", ephemeral:true});
 }
 
-if(interaction.customId.startsWith("fechar_")){
-ticketsAbertos.delete(interaction.user.id);
-await interaction.channel.send("🔒 Ticket fechado!");
-setTimeout(()=>interaction.channel.delete().catch(()=>{}),2000);
-}
-
-if(interaction.customId.startsWith("paguei_")){
-return interaction.reply({content:"⏳ Aguardando confirmação automática...",ephemeral:true});
+// BOTÃO JÁ PAGUEI
+if(interaction.customId.startsWith("ja_paguei_")){
+return interaction.reply({content:"🔎 Verificando pagamento...", ephemeral:true});
 }
 
 });
@@ -231,70 +193,59 @@ try{
 
 if(req.body.type === "payment"){
 
-const infoMP = await payment.get({id:req.body.data.id});
+const pagamentoInfo = await payment.get({ id:req.body.data.id });
 
-if(infoMP.status === "approved"){
+if(pagamentoInfo.status === "approved"){
 
-const info = pagamentos[infoMP.id];
+const info = pagamentos[pagamentoInfo.id];
 if(!info) return;
+
+const user = await client.users.fetch(info.userId);
+const guild = client.guilds.cache.first();
 
 // ENTREGA
 let entrega = "";
 
 if(info.produto.tipo === "auto"){
-entrega = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
+const conta = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
+entrega = `🎮 Conta:\n\`\`\`${conta}\`\`\``;
 }
 
 if(info.produto.tipo === "link"){
-entrega = info.produto.link;
+entrega = `📦 Download:\n${info.produto.link}`;
 }
 
 if(info.produto.tipo === "otimizacao"){
-entrega = "📦 Entrega manual ou configure depois";
+entrega = "🚀 Sua otimização será enviada!";
 }
 
-// CONTADOR
-vendas++;
-ranking[info.userId] = (ranking[info.userId] || 0) + 1;
-ticketsAbertos.delete(info.userId);
+// DM + AVALIAÇÃO
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}
 
-const user = await client.users.fetch(info.userId);
+⭐ Avalie de 1 a 10 e escreva um comentário:`);
 
-// DM + fallback
-try{
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
-}catch{
-const canal = await client.channels.fetch(info.canalId);
-canal.send(`⚠️ DM bloqueada!\n\n${entrega}`);
-}
+// esperar resposta
+const collector = user.dmChannel.createMessageCollector({ time:600000 });
 
-// ticket
-const canal = await client.channels.fetch(info.canalId);
-canal.send(`✅ PAGAMENTO APROVADO!\n\n${entrega}`);
+collector.on("collect",async m=>{
+const canalFeed = await client.channels.fetch(CANAL_FEEDBACK);
+
+canalFeed.send(`⭐ Avaliação de <@${user.id}>
+📝 ${m.content}`);
+collector.stop();
+});
 
 // LOG
 const logs = await client.channels.fetch(CANAL_LOGS);
+logs.send(`💰 Venda: ${info.produto.nome} | R$${info.produto.preco}`);
 
-logs.send({
-embeds:[new EmbedBuilder()
-.setTitle("💰 Venda Aprovada")
-.setDescription(`
-👤 Cliente: <@${info.userId}>
-📦 Produto: ${info.produto.nome}
-💰 Valor: R$${info.produto.preco}
-
-📊 Total vendas: ${vendas}
-`)
-.setColor("Green")]
-});
+delete pagamentos[pagamentoInfo.id];
 
 }
 
 }
 
-}catch(e){
-console.log(e);
-}
+}catch(e){ console.log(e); }
 
 res.sendStatus(200);
 });
