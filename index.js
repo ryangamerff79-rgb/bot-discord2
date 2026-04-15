@@ -35,20 +35,24 @@ const CANAL_LOGS = "1488589113954271282";
 const CANAL_RANK = "1490184769831698655";
 
 // BANCO
-let vendas={}, dinheiro={};
+let vendas={}, dinheiro={}, entregues={};
+
 if(fs.existsSync("dados.json")){
 const data = JSON.parse(fs.readFileSync("dados.json"));
 vendas=data.vendas||{};
 dinheiro=data.dinheiro||{};
+entregues=data.entregues||{};
 }
+
 function salvar(){
-fs.writeFileSync("dados.json",JSON.stringify({vendas,dinheiro},null,2));
+fs.writeFileSync("dados.json",JSON.stringify({vendas,dinheiro,entregues},null,2));
 }
 
 // MP
 const mp = new MercadoPagoConfig({accessToken:MP_TOKEN});
 const payment = new Payment(mp);
 
+// PRODUTOS
 const PRODUTOS={
 opt5:{preco:5,nome:"Otimização Básica",tipo:"otimizacao"},
 opt10:{preco:10,nome:"Otimização Avançada",tipo:"otimizacao"},
@@ -66,7 +70,7 @@ const CONTAS_GTA=[
 "msfaraz69:blj55566"
 ];
 
-client.once("ready",()=>console.log("✅ BOT ONLINE"));
+client.once("clientReady",()=>console.log("✅ BOT ONLINE"));
 
 // ================= PAINEL =================
 client.on("messageCreate",async msg=>{
@@ -84,21 +88,19 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 }
 });
 
-// ================= INTERAÇÃO =================
+// ================= INTERAÇÕES =================
 client.on("interactionCreate", async interaction => {
 try{
 
 if(!interaction.isButton()) return;
 
+if(PRODUTOS[interaction.customId]){
+
 const produto = PRODUTOS[interaction.customId];
-if(!produto) return;
 
-await interaction.reply({content:"⏳ Gerando pagamento...",ephemeral:true});
+await interaction.reply({content:"⏳ Gerando pagamento...",flags:64});
 
-let pg;
-
-try{
-pg = await payment.create({
+const pg = await payment.create({
 body:{
 transaction_amount:Number(produto.preco),
 description:produto.nome,
@@ -110,14 +112,6 @@ produto:interaction.customId
 }
 }
 });
-}catch(err){
-console.log("ERRO MP:",err);
-return interaction.editReply({content:"❌ Erro ao gerar pagamento"});
-}
-
-if(!pg?.point_of_interaction){
-return interaction.editReply({content:"❌ Erro ao gerar PIX"});
-}
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
 const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
@@ -133,7 +127,6 @@ permissionOverwrites:[
 ]
 });
 
-// embed
 let embed=new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
 .setDescription(`Produto: ${produto.nome}
@@ -142,10 +135,11 @@ Valor: R$${produto.preco}
 📋 PIX:
 \`\`\`
 ${pix}
-\`\`\``)
+\`\`\`
+
+⏳ Expira em 10 minutos`)
 .setColor("Green");
 
-// QR
 let files=[];
 if(qr){
 const buffer=Buffer.from(qr,"base64");
@@ -153,70 +147,60 @@ files.push(new AttachmentBuilder(buffer,{name:"qr.png"}));
 embed.setImage("attachment://qr.png");
 }
 
-// botões (AGORA CORRIGIDO)
-const row=new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${pg.id}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId(`paguei_${pg.id}`).setLabel("✅ Já paguei").setStyle(ButtonStyle.Success)
-);
-
-await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row],files});
-
-interaction.editReply({content:`✅ Ticket: ${canal}`});
-
-}catch(err){
-console.log("ERRO GERAL:",err);
-}
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+files
 });
 
-// ================= BOTÃO COPIAR =================
-client.on("interactionCreate", async interaction=>{
-if(!interaction.isButton()) return;
+interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-if(interaction.customId.startsWith("copiar_")){
+// aviso 8 min
+setTimeout(()=>{
+canal.send("⚠️ Últimos 2 minutos para pagar!");
+},480000);
 
-const id = interaction.customId.split("_")[1];
+// fechar 10 min
+setTimeout(()=>{
+canal.send("❌ Pagamento expirado, ticket fechado.");
+canal.delete().catch(()=>{});
+},600000);
 
-const pg = await payment.get({id});
-
-const pix = pg.point_of_interaction?.transaction_data?.qr_code;
-
-if(!pix){
-return interaction.reply({content:"❌ PIX não encontrado",ephemeral:true});
+return;
 }
 
-const modal=new ModalBuilder()
-.setCustomId("pix_modal")
-.setTitle("📋 Copiar PIX");
-
-const input=new TextInputBuilder()
-.setCustomId("pix")
-.setLabel("Segure para copiar")
-.setStyle(TextInputStyle.Paragraph)
-.setValue(pix);
-
-modal.addComponents(new ActionRowBuilder().addComponents(input));
-
-return interaction.showModal(modal);
+}catch(err){
+console.log("ERRO:",err);
 }
-
-// botão paguei
-if(interaction.customId.startsWith("paguei_")){
-return interaction.reply({content:"⏳ Aguardando confirmação automática...",ephemeral:true});
-}
-
 });
 
 // ================= WEBHOOK =================
 app.post("/webhook",async(req,res)=>{
+try{
 
-if(req.body.type==="payment"){
+console.log("WEBHOOK:", req.body);
+
+if(req.body.data?.id){
 
 const pg = await payment.get({id:req.body.data.id});
 
-if(pg.status==="approved"){
+// evitar duplicar entrega
+if(entregues[pg.id]) return;
 
-const userId = pg.metadata.user_id;
-const produtoId = pg.metadata.produto;
+// só aprovado
+if(pg.status === "approved"){
+
+// validar tempo (10 min)
+const createdAt = new Date(pg.date_created).getTime();
+if(Date.now() - createdAt > 600000){
+console.log("Pagamento expirado ignorado");
+return;
+}
+
+const userId = pg.metadata?.user_id;
+const produtoId = pg.metadata?.produto;
+
+if(!userId || !produtoId) return;
 
 const user = await client.users.fetch(userId).catch(()=>null);
 if(!user) return;
@@ -232,10 +216,13 @@ if(produto.tipo==="link"){
 entrega=produto.link;
 }
 if(produto.tipo==="otimizacao"){
-entrega="Produto liberado!";
+entrega="✅ Sua otimização será enviada!";
 }
 
-// salvar
+// salvar entrega
+entregues[pg.id]=true;
+
+// salvar stats
 vendas[user.id]=(vendas[user.id]||0)+1;
 dinheiro[user.id]=(dinheiro[user.id]||0)+produto.preco;
 salvar();
@@ -257,8 +244,15 @@ canalRank.send(`🏆 Ranking:\n${top}`);
 
 }
 
+}catch(e){
+console.log("ERRO WEBHOOK:",e);
+}
+
 res.sendStatus(200);
 });
 
-app.listen(3000);
+// PORTA RAILWAY
+const PORT = process.env.PORT || 3000;
+app.listen(PORT, () => console.log("🔥 Webhook rodando"));
+
 client.login(TOKEN);
