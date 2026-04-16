@@ -27,14 +27,13 @@ GatewayIntentBits.DirectMessages
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
-const OWNER_ID = "853430402601058305";
 
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_COMPRAS = "1494137996612472943";
 
 // BANCO
-let db={vendas:{},dinheiro:{},entregues:{},entregas:{},mensal:{}};
+let db={vendas:{},dinheiro:{},entregues:{}};
 
 if(fs.existsSync("dados.json")){
 db = JSON.parse(fs.readFileSync("dados.json"));
@@ -50,38 +49,11 @@ const payment = new Payment(mp);
 
 // PRODUTOS
 const PRODUTOS={
-opt5:{
-preco:5,
-nome:"Otimização Básica",
-tipo:"link",
-link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file",
-qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494136411010498741/melifile5522522884330243395.png"
-},
-opt10:{
-preco:10,
-nome:"Otimização Avançada",
-tipo:"link",
-link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25A7%25C3%25B5es_diddy.rar/file",
-qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494136583471890432/melifile699355732964229785.png"
-},
-opt20:{
-preco:20,
-nome:"Otimização Suprema",
-tipo:"link",
-link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file",
-qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494136699129696266/melifile7313312231562297400.png"
-},
-gta:{
-preco:5,
-nome:"Conta GTA V",
-tipo:"auto"
-},
-sensi:{
-preco:5,
-nome:"Pack Sensi",
-tipo:"link",
-link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"
-}
+opt5:{preco:5,nome:"Otimização Básica",tipo:"link",link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file"},
+opt10:{preco:10,nome:"Otimização Avançada",tipo:"link",link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25A7%25C3%25B5es_diddy.rar/file"},
+opt20:{preco:20,nome:"Otimização Suprema",tipo:"link",link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file"},
+gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
+sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
 };
 
 // CONTAS GTA
@@ -94,27 +66,7 @@ const CONTAS_GTA=[
 "fxnslyfiug:Malaikane2024"
 ];
 
-// BOT ONLINE + COMANDOS
-client.once("clientReady", async () => {
-
-console.log("✅ BOT ONLINE");
-
-const commands = [
-{name:"lucro",description:"Ver lucro total"},
-{name:"lucromes",description:"Ver lucro do mês"},
-{name:"vendas",description:"Ver total de vendas"},
-{
-name:"reenviar",
-description:"Reenviar produto",
-options:[{name:"usuario",type:6,description:"Usuário",required:true}]
-}
-];
-
-await client.application.commands.set(commands);
-
-console.log("✅ Comandos registrados");
-
-});
+client.once("clientReady",()=>console.log("✅ BOT ONLINE"));
 
 // PAINEL
 client.on("messageCreate",async msg=>{
@@ -155,8 +107,9 @@ metadata:{user_id:interaction.user.id,produto:interaction.customId}
 });
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
+const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
 
-// ticket
+// CRIAR TICKET
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -167,30 +120,35 @@ permissionOverwrites:[
 ]
 });
 
-// embed
-const embed=new EmbedBuilder()
-.setTitle("💳 PAGAMENTO PIX")
-.setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\n📋 PIX:\n${pix}\n\n⏳ Expira em 10 minutos`)
+// EMBED LIMPO
+const embed = new EmbedBuilder()
+.setTitle("💳 PAGAMENTO VIA PIX")
+.setDescription("Escaneie o QR Code abaixo")
 .setColor("Green");
 
-if(produto.qr){
-embed.setImage(produto.qr);
-}
-
-// botão copiar
+// BOTÃO COPIAR
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${pg.id}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary)
+new ButtonBuilder()
+.setCustomId(`copiar_${pg.id}`)
+.setLabel("📋 Copiar PIX")
+.setStyle(ButtonStyle.Primary)
 );
+
+// ENVIO COM QR LIMPO
+if(qr){
+const buffer = Buffer.from(qr, "base64");
 
 await canal.send({
 content:`<@${interaction.user.id}>`,
-embeds:[embed],
+embeds:[embed.setImage("attachment://qrcode.png")],
+files:[{attachment:buffer,name:"qrcode.png"}],
 components:[row]
 });
+}
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// expira
+// EXPIRA 10 MIN
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
 }
 
@@ -201,41 +159,6 @@ const pg = await payment.get({id});
 const pix = pg.point_of_interaction.transaction_data.qr_code;
 
 return interaction.reply({content:`📋 PIX:\n${pix}`,flags:64});
-}
-
-// COMANDOS
-if(interaction.isChatInputCommand()){
-
-if(interaction.user.id !== OWNER_ID){
-return interaction.reply({content:"❌ Sem permissão",flags:64});
-}
-
-if(interaction.commandName==="lucro"){
-let total = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
-interaction.reply({content:`💰 Lucro total: R$${total}`,flags:64});
-}
-
-if(interaction.commandName==="lucromes"){
-const mes = new Date().getMonth();
-let total = Object.values(db.mensal[mes]||{}).reduce((a,b)=>a+b,0);
-interaction.reply({content:`📅 Lucro do mês: R$${total}`,flags:64});
-}
-
-if(interaction.commandName==="vendas"){
-let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
-interaction.reply({content:`📦 Total de vendas: ${total}`,flags:64});
-}
-
-if(interaction.commandName==="reenviar"){
-const user = interaction.options.getUser("usuario");
-const entrega = db.entregas[user.id];
-
-if(!entrega) return interaction.reply({content:"❌ Nenhuma entrega encontrada",flags:64});
-
-await user.send(`📦 Reenvio:\n${entrega}`).catch(()=>{});
-interaction.reply({content:"✅ Reenviado!",flags:64});
-}
-
 }
 
 }catch(e){
@@ -263,7 +186,7 @@ const produtoId = pg.metadata?.produto;
 const user = await client.users.fetch(userId);
 const produto = PRODUTOS[produtoId];
 
-// entrega
+// ENTREGA
 let entrega="";
 
 if(produto.tipo==="auto"){
@@ -274,56 +197,24 @@ if(produto.tipo==="link"){
 entrega = produto.link;
 }
 
-// salvar
+// SALVAR
 db.entregues[pg.id]=true;
-db.entregas[userId]=entrega;
 db.vendas[userId]=(db.vendas[userId]||0)+1;
 db.dinheiro[userId]=(db.dinheiro[userId]||0)+produto.preco;
-
-const mes = new Date().getMonth();
-if(!db.mensal[mes]) db.mensal[mes]={};
-db.mensal[mes][userId]=(db.mensal[mes][userId]||0)+produto.preco;
-
 salvar();
 
-// DM + fallback
-let enviadoDM = true;
-
-await user.send(`✅ Compra confirmada!\n${entrega}`).catch(()=>{
-enviadoDM = false;
-});
-
-if(!enviadoDM){
-for(const guild of client.guilds.cache.values()){
-const canal = guild.channels.cache.find(c => c.name === `ticket-${user.username}`);
-if(canal){
-canal.send(`📦 Entrega:\n${entrega}`);
-break;
-}
-}
-}
+// DM
+await user.send(`✅ Compra confirmada!\n${entrega}`).catch(()=>{});
 
 // LOGS
 const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-canalLogs.send({
-content:`💰 **Compra confirmada**
-👤 Usuário: <@${userId}>
-🛒 Produto: ${produto.nome}
-
-📦 Entrega automática`
-});
+canalLogs.send(`💰 <@${userId}> comprou ${produto.nome}`);
 
 // PROVA SOCIAL
 const canalCompras = await client.channels.fetch(CANAL_COMPRAS);
 
-canalCompras.send({
-content:`💸 **COMPRA CONFIRMADA AGORA!**
-🛒 ${produto.nome}
-👤 ${user.username}
-
-🚀 Entrega automática ativada!`
-});
+canalCompras.send(`💸 ${user.username} comprou ${produto.nome}`);
 
 }catch(e){
 console.log("ERRO WEBHOOK:", e);
