@@ -5,7 +5,8 @@ ButtonBuilder,
 ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-EmbedBuilder
+EmbedBuilder,
+AttachmentBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -47,43 +48,65 @@ fs.writeFileSync("dados.json",JSON.stringify(db,null,2));
 const mp = new MercadoPagoConfig({accessToken:MP_TOKEN});
 const payment = new Payment(mp);
 
-// PRODUTOS
+// PRODUTOS COM QR
 const PRODUTOS={
-gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
-sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
+opt5:{
+preco:5,
+nome:"Otimização Básica",
+tipo:"link",
+link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file",
+qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494136411010498741/melifile5522522884330243395.png"
+},
+opt10:{
+preco:10,
+nome:"Otimização Avançada",
+tipo:"link",
+link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25A7%25C3%25B5es_diddy.rar/file",
+qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494136583471890432/melifile699355732964229785.png"
+},
+opt20:{
+preco:20,
+nome:"Otimização Suprema",
+tipo:"link",
+link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file",
+qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494136699129696266/melifile7313312231562297400.png"
+},
+gta:{
+preco:5,
+nome:"Conta GTA V",
+tipo:"auto"
+},
+sensi:{
+preco:5,
+nome:"Pack Sensi",
+tipo:"link",
+link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"
+}
 };
 
-const CONTAS_GTA=["conta1:senha","conta2:senha"];
+// CONTAS GTA
+const CONTAS_GTA=[
+"PODTOPTAP:dream282521",
+"gta19710559:85sJzrKnu",
+"finnickloveschrismas:10011990t",
+"halotic21:Ddjac210392",
+"msfaraz69:blj55566",
+"fxnslyfiug:Malaikane2024"
+];
 
-// ================= BOT ONLINE + COMANDOS =================
+// BOT ONLINE + COMANDOS
 client.once("clientReady", async () => {
 
 console.log("✅ BOT ONLINE");
 
 const commands = [
+{name:"lucro",description:"Ver lucro total"},
+{name:"lucromes",description:"Ver lucro do mês"},
+{name:"vendas",description:"Ver total de vendas"},
 {
-name: "lucro",
-description: "Ver lucro total"
-},
-{
-name: "lucromes",
-description: "Ver lucro do mês"
-},
-{
-name: "vendas",
-description: "Ver total de vendas"
-},
-{
-name: "reenviar",
-description: "Reenviar produto",
-options: [
-{
-name: "usuario",
-type: 6,
-description: "Usuário",
-required: true
-}
-]
+name:"reenviar",
+description:"Reenviar produto",
+options:[{name:"usuario",type:6,description:"Usuário",required:true}]
 }
 ];
 
@@ -93,20 +116,23 @@ console.log("✅ Comandos registrados");
 
 });
 
-// ================= PAINEL =================
+// PAINEL
 client.on("messageCreate",async msg=>{
 if(msg.content==="!painel"){
 msg.channel.send({
 content:"🚀 Loja",
 components:[new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId("gta").setLabel("GTA V").setStyle(ButtonStyle.Primary),
-new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.Success)
+new ButtonBuilder().setCustomId("opt5").setLabel("R$5 Básico").setStyle(ButtonStyle.Primary),
+new ButtonBuilder().setCustomId("opt10").setLabel("R$10 Avançado").setStyle(ButtonStyle.Success),
+new ButtonBuilder().setCustomId("opt20").setLabel("R$20 Supremo").setStyle(ButtonStyle.Danger),
+new ButtonBuilder().setCustomId("gta").setLabel("GTA V").setStyle(ButtonStyle.Secondary),
+new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.Secondary)
 )]
 });
 }
 });
 
-// ================= INTERAÇÕES =================
+// INTERAÇÕES
 client.on("interactionCreate", async interaction => {
 
 try{
@@ -141,11 +167,15 @@ permissionOverwrites:[
 ]
 });
 
-// embed corrigido
+// embed com QR
 const embed=new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
 .setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\n📋 PIX:\n${pix}\n\n⏳ Expira em 10 minutos`)
 .setColor("Green");
+
+if(produto.qr){
+embed.setImage(produto.qr);
+}
 
 // botão copiar
 const row = new ActionRowBuilder().addComponents(
@@ -176,35 +206,31 @@ return interaction.reply({content:`📋 PIX:\n${pix}`,flags:64});
 // COMANDOS
 if(interaction.isChatInputCommand()){
 
-// LUCRO TOTAL
-if(interaction.commandName==="lucro"){
-if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
+if(interaction.user.id !== OWNER_ID){
+return interaction.reply({content:"❌ Sem permissão",flags:64});
+}
 
+// lucro total
+if(interaction.commandName==="lucro"){
 let total = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
 interaction.reply({content:`💰 Lucro total: R$${total}`,flags:64});
 }
 
-// LUCRO MENSAL
+// lucro mês
 if(interaction.commandName==="lucromes"){
-if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
-
 const mes = new Date().getMonth();
 let total = Object.values(db.mensal[mes]||{}).reduce((a,b)=>a+b,0);
 interaction.reply({content:`📅 Lucro do mês: R$${total}`,flags:64});
 }
 
-// VENDAS
+// vendas
 if(interaction.commandName==="vendas"){
-if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
-
 let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
 interaction.reply({content:`📦 Total de vendas: ${total}`,flags:64});
 }
 
-// REENVIAR
+// reenviar
 if(interaction.commandName==="reenviar"){
-if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
-
 const user = interaction.options.getUser("usuario");
 const entrega = db.entregas[user.id];
 
@@ -222,7 +248,7 @@ console.log(e);
 
 });
 
-// ================= WEBHOOK =================
+// WEBHOOK
 app.post("/webhook", async (req, res) => {
 res.sendStatus(200);
 
@@ -242,9 +268,15 @@ const user = await client.users.fetch(userId);
 const produto = PRODUTOS[produtoId];
 
 // ENTREGA
-let entrega = produto.tipo==="auto"
-? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
-: produto.link;
+let entrega="";
+
+if(produto.tipo==="auto"){
+entrega = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
+}
+
+if(produto.tipo==="link"){
+entrega = produto.link;
+}
 
 // SALVAR
 db.entregues[pg.id]=true;
