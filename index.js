@@ -148,7 +148,7 @@ components:[row]
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// EXPIRA 10 MIN
+// EXPIRA
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
 }
 
@@ -167,13 +167,16 @@ console.log(e);
 
 });
 
-// WEBHOOK
+// WEBHOOK (CORRIGIDO 502)
 app.post("/webhook", async (req, res) => {
-res.sendStatus(200);
+
+res.status(200).send("OK");
 
 try{
 
-if(!req.body.data?.id) return;
+console.log("WEBHOOK:", req.body);
+
+if(!req.body?.data?.id) return;
 
 const pg = await payment.get({id:req.body.data.id});
 
@@ -183,7 +186,11 @@ if(pg.status !== "approved") return;
 const userId = pg.metadata?.user_id;
 const produtoId = pg.metadata?.produto;
 
-const user = await client.users.fetch(userId);
+if(!userId || !produtoId) return;
+
+const user = await client.users.fetch(userId).catch(()=>null);
+if(!user) return;
+
 const produto = PRODUTOS[produtoId];
 
 // ENTREGA
@@ -204,17 +211,33 @@ db.dinheiro[userId]=(db.dinheiro[userId]||0)+produto.preco;
 salvar();
 
 // DM
-await user.send(`✅ Compra confirmada!\n${entrega}`).catch(()=>{});
+let enviado = true;
+
+await user.send(`✅ Pagamento aprovado!\n\n📦 Produto:\n${entrega}`)
+.catch(()=> enviado = false);
+
+// fallback
+if(!enviado){
+for(const guild of client.guilds.cache.values()){
+const canal = guild.channels.cache.find(c => c.name === `ticket-${user.username}`);
+if(canal){
+canal.send(`📦 Entrega:\n${entrega}`);
+break;
+}
+}
+}
 
 // LOGS
-const canalLogs = await client.channels.fetch(CANAL_LOGS);
-
+const canalLogs = await client.channels.fetch(CANAL_LOGS).catch(()=>null);
+if(canalLogs){
 canalLogs.send(`💰 <@${userId}> comprou ${produto.nome}`);
+}
 
-// PROVA SOCIAL
-const canalCompras = await client.channels.fetch(CANAL_COMPRAS);
-
+// COMPRAS RECENTES
+const canalCompras = await client.channels.fetch(CANAL_COMPRAS).catch(()=>null);
+if(canalCompras){
 canalCompras.send(`💸 ${user.username} comprou ${produto.nome}`);
+}
 
 }catch(e){
 console.log("ERRO WEBHOOK:", e);
