@@ -308,12 +308,27 @@ break;
 }
 
 // LOGS
-const canalLogs=await client.channels.fetch(CANAL_LOGS);
-canalLogs.send(`💰 <@${userId}> comprou ${produto.nome}`);
+// LOGS (canal de vendas)
+const canalLogs = await client.channels.fetch(CANAL_LOGS);
 
-}catch(e){
-console.log("ERRO WEBHOOK:", e);
-}
+canalLogs.send({
+content:`💰 **Compra confirmada**
+👤 Usuário: <@${userId}>
+🛒 Produto: ${produto.nome}
+
+📦 Entrega realizada automaticamente`
+});
+
+// COMPRAS RECENTES (PROVA SOCIAL)
+const canalCompras = await client.channels.fetch("1494137996612472943");
+
+canalCompras.send({
+content:`💸 **COMPRA CONFIRMADA AGORA!**
+🛒 Produto: ${produto.nome}
+👤 Cliente: ${user.username}
+
+🚀 Entrega automática ativada!`
+});
 
 });
 
