@@ -5,11 +5,7 @@ ButtonBuilder,
 ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-EmbedBuilder,
-AttachmentBuilder,
-ModalBuilder,
-TextInputBuilder,
-TextInputStyle
+EmbedBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -31,13 +27,13 @@ GatewayIntentBits.DirectMessages
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
+const OWNER_ID = "853430402601058305";
+
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
-const CANAL_RANK = "1490184769831698655";
-const CANAL_FEEDBACK = "1467351899497041942";
 
 // BANCO
-let db={vendas:{},dinheiro:{},entregues:{},mensal:{}};
+let db={vendas:{},dinheiro:{},entregues:{},entregas:{},mensal:{}};
 
 if(fs.existsSync("dados.json")){
 db = JSON.parse(fs.readFileSync("dados.json"));
@@ -53,13 +49,49 @@ const payment = new Payment(mp);
 
 // PRODUTOS
 const PRODUTOS={
-gta:{preco:5,nome:"Conta GTA V",tipo:"auto",qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494130892661330040/melifile6374195053668223283.png"},
-sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file",qr:"https://cdn.discordapp.com/attachments/1373392385014370334/1494130719570661506/melifile7170941545129788461.png"}
+gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
+sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
 };
 
 const CONTAS_GTA=["conta1:senha","conta2:senha"];
 
-client.once("clientReady",()=>console.log("✅ BOT ONLINE"));
+// ================= BOT ONLINE + COMANDOS =================
+client.once("clientReady", async () => {
+
+console.log("✅ BOT ONLINE");
+
+const commands = [
+{
+name: "lucro",
+description: "Ver lucro total"
+},
+{
+name: "lucromes",
+description: "Ver lucro do mês"
+},
+{
+name: "vendas",
+description: "Ver total de vendas"
+},
+{
+name: "reenviar",
+description: "Reenviar produto",
+options: [
+{
+name: "usuario",
+type: 6,
+description: "Usuário",
+required: true
+}
+]
+}
+];
+
+await client.application.commands.set(commands);
+
+console.log("✅ Comandos registrados");
+
+});
 
 // ================= PAINEL =================
 client.on("messageCreate",async msg=>{
@@ -76,6 +108,7 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 
 // ================= INTERAÇÕES =================
 client.on("interactionCreate", async interaction => {
+
 try{
 
 // COMPRA
@@ -108,17 +141,23 @@ permissionOverwrites:[
 ]
 });
 
-let embed=new EmbedBuilder()
+// embed corrigido
+const embed=new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
-.setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\n📋 PIX:\n\```\n${pix}\n```\n⏳ Expira em 10 minutos`)
-.setImage(produto.qr)
+.setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\n📋 PIX:\n${pix}\n\n⏳ Expira em 10 minutos`)
 .setColor("Green");
 
+// botão copiar
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId(`copiar_${pg.id}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary)
 );
 
-await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row]});
+await canal.send({
+content:`<@${interaction.user.id}>`,
+embeds:[embed],
+components:[row]
+});
+
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
 // expiração
@@ -131,21 +170,56 @@ const id = interaction.customId.split("_")[1];
 const pg = await payment.get({id});
 const pix = pg.point_of_interaction.transaction_data.qr_code;
 
-return interaction.reply({content:`📋 PIX:\n\```\n${pix}\n````,flags:64});
+return interaction.reply({content:`📋 PIX:\n${pix}`,flags:64});
 }
 
-// FEEDBACK
-if(interaction.isModalSubmit() && interaction.customId==="feedback"){
-const nota = interaction.fields.getTextInputValue("nota");
-const msg = interaction.fields.getTextInputValue("msg");
+// COMANDOS
+if(interaction.isChatInputCommand()){
 
-const canal = await client.channels.fetch(CANAL_FEEDBACK);
-canal.send(`⭐ Nota: ${nota}\n💬 ${msg}\n👤 <@${interaction.user.id}>`);
+// LUCRO TOTAL
+if(interaction.commandName==="lucro"){
+if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
 
-interaction.reply({content:"✅ Feedback enviado!",flags:64});
+let total = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
+interaction.reply({content:`💰 Lucro total: R$${total}`,flags:64});
 }
 
-}catch(e){console.log(e);}
+// LUCRO MENSAL
+if(interaction.commandName==="lucromes"){
+if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
+
+const mes = new Date().getMonth();
+let total = Object.values(db.mensal[mes]||{}).reduce((a,b)=>a+b,0);
+interaction.reply({content:`📅 Lucro do mês: R$${total}`,flags:64});
+}
+
+// VENDAS
+if(interaction.commandName==="vendas"){
+if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
+
+let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
+interaction.reply({content:`📦 Total de vendas: ${total}`,flags:64});
+}
+
+// REENVIAR
+if(interaction.commandName==="reenviar"){
+if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Sem permissão",flags:64});
+
+const user = interaction.options.getUser("usuario");
+const entrega = db.entregas[user.id];
+
+if(!entrega) return interaction.reply({content:"❌ Nenhuma entrega encontrada",flags:64});
+
+await user.send(`📦 Reenvio:\n${entrega}`).catch(()=>{});
+interaction.reply({content:"✅ Reenviado!",flags:64});
+}
+
+}
+
+}catch(e){
+console.log(e);
+}
+
 });
 
 // ================= WEBHOOK =================
@@ -161,10 +235,6 @@ const pg = await payment.get({id:req.body.data.id});
 if(db.entregues[pg.id]) return;
 if(pg.status !== "approved") return;
 
-// anti fraude tempo
-const createdAt = new Date(pg.date_created).getTime();
-if(Date.now() - createdAt > 600000) return;
-
 const userId = pg.metadata?.user_id;
 const produtoId = pg.metadata?.produto;
 
@@ -178,46 +248,41 @@ let entrega = produto.tipo==="auto"
 
 // SALVAR
 db.entregues[pg.id]=true;
+db.entregas[userId]=entrega;
 db.vendas[userId]=(db.vendas[userId]||0)+1;
+db.dinheiro[userId]=(db.dinheiro[userId]||0)+produto.preco;
 
-// mensal
 const mes = new Date().getMonth();
 if(!db.mensal[mes]) db.mensal[mes]={};
-db.mensal[mes][userId]=(db.mensal[mes][userId]||0)+1;
+db.mensal[mes][userId]=(db.mensal[mes][userId]||0)+produto.preco;
 
 salvar();
 
-// DM + feedback
-const modal = new ModalBuilder()
-.setCustomId("feedback")
-.setTitle("Deixe seu feedback");
+// DM + fallback
+let enviadoDM = true;
 
-modal.addComponents(
-new ActionRowBuilder().addComponents(
-new TextInputBuilder().setCustomId("nota").setLabel("Nota (1-10)").setStyle(TextInputStyle.Short)
-),
-new ActionRowBuilder().addComponents(
-new TextInputBuilder().setCustomId("msg").setLabel("Comentário").setStyle(TextInputStyle.Paragraph)
-)
-);
+await user.send(`✅ Compra confirmada!\n${entrega}`).catch(()=>{
+enviadoDM = false;
+});
 
-await user.send(`✅ Compra confirmada!\n${entrega}`).catch(()=>{});
+if(!enviadoDM){
+for(const guild of client.guilds.cache.values()){
+const canal = guild.channels.cache.find(c => c.name === `ticket-${user.username}`);
+if(canal){
+canal.send(`📦 Entrega:\n${entrega}`);
+break;
+}
+}
+}
 
 // LOGS
 const canalLogs=await client.channels.fetch(CANAL_LOGS);
-canalLogs.send(`💰 Compra confirmada\n👤 <@${userId}>\n📦 ${produto.nome}`);
-
-// RANK MENSAL
-const canalRank=await client.channels.fetch(CANAL_RANK);
-let top=Object.entries(db.mensal[new Date().getMonth()]||{})
-.sort((a,b)=>b[1]-a[1]).slice(0,10)
-.map((x,i)=>`#${i+1} <@${x[0]}> — ${x[1]} compras`).join("\n");
-
-canalRank.send(`🏆 Ranking mensal:\n${top}`);
+canalLogs.send(`💰 <@${userId}> comprou ${produto.nome}`);
 
 }catch(e){
 console.log("ERRO WEBHOOK:", e);
 }
+
 });
 
 // PORTA
