@@ -33,22 +33,22 @@ const CANAL_LOGS = "1488589113954271282";
 const CANAL_COMPRAS = "1494137996612472943";
 
 // BANCO
-let db={vendas:{},dinheiro:{},entregues:{}};
+let db = { vendas:{}, dinheiro:{}, entregues:{} };
 
 if(fs.existsSync("dados.json")){
 db = JSON.parse(fs.readFileSync("dados.json"));
 }
 
 function salvar(){
-fs.writeFileSync("dados.json",JSON.stringify(db,null,2));
+fs.writeFileSync("dados.json", JSON.stringify(db, null, 2));
 }
 
 // MP
-const mp = new MercadoPagoConfig({accessToken:MP_TOKEN});
+const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
 const payment = new Payment(mp);
 
 // PRODUTOS
-const PRODUTOS={
+const PRODUTOS = {
 opt5:{preco:5,nome:"Otimização Básica",tipo:"link",link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file"},
 opt10:{preco:10,nome:"Otimização Avançada",tipo:"link",link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25A7%25C3%25B5es_diddy.rar/file"},
 opt20:{preco:20,nome:"Otimização Suprema",tipo:"link",link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file"},
@@ -57,7 +57,7 @@ sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/fil
 };
 
 // CONTAS GTA
-const CONTAS_GTA=[
+const CONTAS_GTA = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
 "finnickloveschrismas:10011990t",
@@ -66,11 +66,11 @@ const CONTAS_GTA=[
 "fxnslyfiug:Malaikane2024"
 ];
 
-client.once("clientReady",()=>console.log("✅ BOT ONLINE"));
+client.once("clientReady", () => console.log("✅ BOT ONLINE"));
 
 // PAINEL
-client.on("messageCreate",async msg=>{
-if(msg.content==="!painel"){
+client.on("messageCreate", async msg => {
+if(msg.content === "!painel"){
 msg.channel.send({
 content:"🚀 Loja",
 components:[new ActionRowBuilder().addComponents(
@@ -84,7 +84,7 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 }
 });
 
-// INTERAÇÕES
+// INTERAÇÃO
 client.on("interactionCreate", async interaction => {
 
 try{
@@ -98,9 +98,9 @@ await interaction.reply({content:"⏳ Gerando pagamento...",flags:64});
 
 const pg = await payment.create({
 body:{
-transaction_amount:Number(produto.preco),
-description:produto.nome,
-payment_method_id:"pix",
+transaction_amount: produto.preco,
+description: produto.nome,
+payment_method_id: "pix",
 payer:{email:`user${interaction.user.id}@gmail.com`},
 metadata:{user_id:interaction.user.id,produto:interaction.customId}
 }
@@ -126,7 +126,7 @@ const embed = new EmbedBuilder()
 .setDescription("Escaneie o QR Code abaixo")
 .setColor("Green");
 
-// BOTÃO COPIAR
+// BOTÃO
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder()
 .setCustomId(`copiar_${pg.id}`)
@@ -134,7 +134,7 @@ new ButtonBuilder()
 .setStyle(ButtonStyle.Primary)
 );
 
-// ENVIO COM QR LIMPO
+// ENVIO
 if(qr){
 const buffer = Buffer.from(qr, "base64");
 
@@ -148,7 +148,7 @@ components:[row]
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// EXPIRA
+// EXPIRA 10 MIN
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
 }
 
@@ -162,14 +162,15 @@ return interaction.reply({content:`📋 PIX:\n${pix}`,flags:64});
 }
 
 }catch(e){
-console.log(e);
+console.log("ERRO INTERAÇÃO:", e);
 }
 
 });
 
-// WEBHOOK (CORRIGIDO 502)
+// WEBHOOK (SEM 502)
 app.post("/webhook", async (req, res) => {
 
+// RESPONDE IMEDIATO
 res.status(200).send("OK");
 
 try{
@@ -194,20 +195,20 @@ if(!user) return;
 const produto = PRODUTOS[produtoId];
 
 // ENTREGA
-let entrega="";
+let entrega = "";
 
-if(produto.tipo==="auto"){
+if(produto.tipo === "auto"){
 entrega = CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
 }
 
-if(produto.tipo==="link"){
+if(produto.tipo === "link"){
 entrega = produto.link;
 }
 
 // SALVAR
-db.entregues[pg.id]=true;
-db.vendas[userId]=(db.vendas[userId]||0)+1;
-db.dinheiro[userId]=(db.dinheiro[userId]||0)+produto.preco;
+db.entregues[pg.id] = true;
+db.vendas[userId] = (db.vendas[userId]||0)+1;
+db.dinheiro[userId] = (db.dinheiro[userId]||0)+produto.preco;
 salvar();
 
 // DM
@@ -216,7 +217,7 @@ let enviado = true;
 await user.send(`✅ Pagamento aprovado!\n\n📦 Produto:\n${entrega}`)
 .catch(()=> enviado = false);
 
-// fallback
+// FALLBACK
 if(!enviado){
 for(const guild of client.guilds.cache.values()){
 const canal = guild.channels.cache.find(c => c.name === `ticket-${user.username}`);
@@ -245,8 +246,11 @@ console.log("ERRO WEBHOOK:", e);
 
 });
 
-// PORTA
+// PORTA CORRETA (IMPORTANTE)
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => console.log("🔥 Webhook rodando"));
+
+app.listen(PORT, () => {
+console.log("🔥 Webhook rodando na porta " + PORT);
+});
 
 client.login(TOKEN);
