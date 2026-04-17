@@ -38,8 +38,6 @@ const CANAL_RECENTES = "1494137996612472943";
 
 // BANCO
 let db = {
-vendas:{},
-dinheiro:{},
 entregues:{},
 historico:[]
 };
@@ -80,12 +78,7 @@ console.log("✅ BOT ONLINE");
 
 // SLASH COMMANDS
 const commands = [
-new SlashCommandBuilder().setName("lucrohoje").setDescription("Ver lucro de hoje"),
-new SlashCommandBuilder().setName("lucromes").setDescription("Ver lucro do mês"),
-new SlashCommandBuilder().setName("lucrototal").setDescription("Ver lucro total"),
-new SlashCommandBuilder().setName("reenviar")
-.setDescription("Reenviar produto")
-.addStringOption(o=>o.setName("id").setDescription("ID do pagamento").setRequired(true))
+new SlashCommandBuilder().setName("lucrototal").setDescription("Ver lucro total")
 ].map(c=>c.toJSON());
 
 const rest = new REST({version:"10"}).setToken(TOKEN);
@@ -118,17 +111,17 @@ client.on("interactionCreate", async interaction => {
 
 try{
 
-// ================= BOTÕES =================
-if(interaction.isButton()){
-
-// COPIAR PIX
-if(interaction.customId.startsWith("copiar_")){
+// BOTÃO COPIAR
+if(interaction.isButton() && interaction.customId.startsWith("copiar_")){
 const pix = interaction.customId.replace("copiar_","");
 return interaction.reply({
 content:`📋 PIX:\n${pix}`,
 ephemeral:true
 });
 }
+
+// COMPRA
+if(interaction.isButton()){
 
 const produto = PRODUTOS[interaction.customId];
 if(!produto) return;
@@ -148,10 +141,13 @@ produto:interaction.customId
 }
 });
 
+// 🔥 PIX
 const pix = pg.point_of_interaction.transaction_data.qr_code;
-const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
 
-// criar ticket
+// 🔥 QR PROFISSIONAL (API externa)
+const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
+
+// CRIAR TICKET
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -162,6 +158,7 @@ permissionOverwrites:[
 ]
 });
 
+// EMBED
 const embed = new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
 .setDescription(
@@ -173,17 +170,10 @@ ${pix}
 
 ⏳ Expira em 10 minutos`
 )
+.setImage(qrUrl)
 .setColor("Green");
 
-// QR CODE
-const files=[];
-if(qr){
-const buffer = Buffer.from(qr,"base64");
-files.push(new AttachmentBuilder(buffer,{name:"qr.png"}));
-embed.setImage("attachment://qr.png");
-}
-
-// BOTÃO COPIAR
+// BOTÃO
 const row = new ActionRowBuilder().addComponents(
 new ButtonBuilder()
 .setCustomId(`copiar_${pix}`)
@@ -194,57 +184,23 @@ new ButtonBuilder()
 await canal.send({
 content:`<@${interaction.user.id}>`,
 embeds:[embed],
-files,
 components:[row]
 });
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// fechar em 10 min
+// FECHAR
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
-
 }
 
-// ================= SLASH =================
+// SLASH
 if(interaction.isChatInputCommand()){
-
-if(interaction.user.id !== OWNER_ID){
-return interaction.reply({content:"❌ Apenas dono",ephemeral:true});
-}
-
-const hoje = new Date().toLocaleDateString();
-const mes = new Date().getMonth();
-
-if(interaction.commandName==="lucrohoje"){
-let total = db.historico.filter(x=>x.data===hoje)
-.reduce((a,b)=>a+b.valor,0);
-interaction.reply(`💰 Hoje: R$${total}`);
-}
-
-if(interaction.commandName==="lucromes"){
-let total = db.historico.filter(x=>new Date(x.timestamp).getMonth()===mes)
-.reduce((a,b)=>a+b.valor,0);
-interaction.reply(`💰 Mês: R$${total}`);
-}
+if(interaction.user.id !== OWNER_ID) return;
 
 if(interaction.commandName==="lucrototal"){
 let total = db.historico.reduce((a,b)=>a+b.valor,0);
 interaction.reply(`💰 Total: R$${total}`);
 }
-
-if(interaction.commandName==="reenviar"){
-const id = interaction.options.getString("id");
-
-const venda = db.historico.find(x=>x.id==id);
-if(!venda) return interaction.reply("❌ Não encontrado");
-
-const user = await client.users.fetch(venda.user);
-
-await user.send(`📦 Reenvio do produto:\n${venda.entrega}`);
-
-interaction.reply("✅ Produto reenviado");
-}
-
 }
 
 }catch(err){
@@ -258,14 +214,12 @@ app.post("/webhook",(req,res)=>{
 res.sendStatus(200);
 
 setTimeout(async ()=>{
-
 try{
 
 const id = req.body.data?.id;
 if(!id) return;
 
 const pg = await payment.get({id});
-
 if(db.entregues[pg.id]) return;
 
 if(pg.status==="approved"){
@@ -273,8 +227,7 @@ if(pg.status==="approved"){
 const userId = pg.metadata.user_id;
 const produto = PRODUTOS[pg.metadata.produto];
 
-const user = await client.users.fetch(userId).catch(()=>null);
-if(!user) return;
+const user = await client.users.fetch(userId);
 
 let entrega = produto.tipo==="auto"
 ? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
@@ -283,38 +236,27 @@ let entrega = produto.tipo==="auto"
 db.entregues[pg.id]=true;
 
 db.historico.push({
-id:pg.id,
-user:userId,
-valor:produto.preco,
-entrega,
-timestamp:Date.now(),
-data:new Date().toLocaleDateString()
+valor:produto.preco
 });
 
 salvar();
 
-// DM
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}`).catch(()=>{});
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
 
-// LOGS
 const logs = await client.channels.fetch(CANAL_LOGS);
 logs.send(`💰 <@${user.id}> comprou ${produto.nome}`);
 
-// RECENTES
 const recentes = await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 
 }
 
-}catch(e){
-console.log("ERRO WEBHOOK:",e);
-}
-
+}catch(e){console.log(e);}
 },100);
 
 });
 
-// PORTA (RENDER)
+// PORTA
 const PORT = process.env.PORT;
 app.listen(PORT,()=>console.log("🔥 Webhook rodando"));
 
