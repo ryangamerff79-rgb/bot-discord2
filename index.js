@@ -52,7 +52,7 @@ const payment = new Payment(mp);
 // PRODUTOS
 const PRODUTOS={
 opt5:{preco:5,nome:"Otimização Básica",tipo:"link",link:"https://www.mediafire.com/file/gas56d3988tfhfl/otimiza%25C3%25A7%25C3%25A3o_basica.rar/file"},
-opt10:{preco:10,nome:"Otimização Avançada",tipo:"link",link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25A7%25C3%25B5es_diddy.rar/file"},
+opt10:{preco:10,nome:"Otimização Avançada",tipo:"link",link:"https://www.mediafire.com/file/98zllqrqqtwe37c/otimiza%25C3%25B5es_diddy.rar/file"},
 opt20:{preco:20,nome:"Otimização Suprema",tipo:"link",link:"https://www.mediafire.com/file/ui6oxugqqo5fv35/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file"},
 gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
 sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
@@ -88,9 +88,10 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 
 // COMPRA
 client.on("interactionCreate", async interaction => {
-if(!interaction.isButton()) return;
+try{
 
-if(PRODUTOS[interaction.customId]){
+if(!interaction.isButton()) return;
+if(!PRODUTOS[interaction.customId]) return;
 
 const produto = PRODUTOS[interaction.customId];
 
@@ -109,7 +110,7 @@ produto:interaction.customId
 }
 });
 
-const pix = pg.point_of_interaction.transaction_data.qr_code;
+const pix = pg.point_of_interaction?.transaction_data?.qr_code || "Erro ao gerar PIX";
 
 // ticket
 const canal = await interaction.guild.channels.create({
@@ -127,66 +128,65 @@ const embed=new EmbedBuilder()
 .setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\nPIX:\n${pix}`)
 .setColor("Green");
 
-const row=new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary)
-);
-
 await canal.send({
 content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row]
+embeds:[embed]
 });
 
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
-// fecha em 10 min
+// fechar 10 min
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
+
+}catch(err){
+console.log("ERRO BOT:",err);
 }
 });
 
-// WEBHOOK
+// WEBHOOK (RESPOSTA RÁPIDA PRA EVITAR 502)
 app.post("/webhook", async (req, res) => {
+
+res.sendStatus(200); // responde rápido
+
+setTimeout(async ()=>{
+
 try {
 
 console.log("WEBHOOK:", req.body);
 
-if (!req.body.data?.id) return res.sendStatus(200);
+if (!req.body.data?.id) return;
 
 const pg = await payment.get({ id: req.body.data.id });
 
-if (entregues[pg.id]) return res.sendStatus(200);
+if (entregues[pg.id]) return;
 
 if (pg.status === "approved") {
 
 const userId = pg.metadata?.user_id;
 const produtoId = pg.metadata?.produto;
 
-if (!userId || !produtoId) return res.sendStatus(200);
+if (!userId || !produtoId) return;
 
 const user = await client.users.fetch(userId).catch(()=>null);
-if (!user) return res.sendStatus(200);
+if (!user) return;
 
 const produto = PRODUTOS[produtoId];
 
-let entrega = "";
-
-if (produto.tipo === "auto") {
-entrega = CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
-} else {
-entrega = produto.link;
-}
+let entrega = produto.tipo === "auto"
+? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
+: produto.link;
 
 entregues[pg.id] = true;
 
-vendas[user.id] = (vendas[user.id] || 0) + 1;
-dinheiro[user.id] = (dinheiro[user.id] || 0) + produto.preco;
+vendas[user.id] = (vendas[user.id]||0)+1;
+dinheiro[user.id] = (dinheiro[user.id]||0)+produto.preco;
 
 salvar();
 
 await user.send(`✅ Pagamento aprovado!\n\n${entrega}`).catch(()=>{});
 
 const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra confirmada: <@${user.id}> - ${produto.nome}`);
+logs.send(`💰 Compra: <@${user.id}> - ${produto.nome}`);
 
 const recentes = await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
@@ -197,11 +197,12 @@ recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 console.log("ERRO WEBHOOK:", err);
 }
 
-res.sendStatus(200);
+}, 100);
+
 });
 
-// PORTA CORRETA (ESSA RESOLVE O 502)
-const PORT = process.env.PORT || 3000;
+// PORTA CERTA (SEM BUG)
+const PORT = process.env.PORT;
 
 app.listen(PORT, () => {
 console.log("🔥 Webhook rodando na porta " + PORT);
