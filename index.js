@@ -5,8 +5,7 @@ ButtonBuilder,
 ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-EmbedBuilder,
-AttachmentBuilder
+EmbedBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -30,7 +29,6 @@ const MP_TOKEN = process.env.MP_TOKEN;
 
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
-const CANAL_RANK = "1490184769831698655";
 const CANAL_RECENTES = "1494137996612472943";
 
 // BANCO
@@ -60,7 +58,7 @@ gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
 sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
 };
 
-// CONTAS GTA RANDOM
+// CONTAS GTA
 const CONTAS_GTA=[
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -141,71 +139,72 @@ components:[row]
 
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
-// fechar 10 min
+// fecha em 10 min
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
 }
 });
 
 // WEBHOOK
-app.post("/webhook",async(req,res)=>{
-try{
+app.post("/webhook", async (req, res) => {
+try {
 
-console.log("WEBHOOK RECEBIDO:",req.body);
+console.log("WEBHOOK:", req.body);
 
-if(!req.body.data?.id) return res.sendStatus(200);
+if (!req.body.data?.id) return res.sendStatus(200);
 
-const pg = await payment.get({id:req.body.data.id});
+const pg = await payment.get({ id: req.body.data.id });
 
-if(entregues[pg.id]) return res.sendStatus(200);
+if (entregues[pg.id]) return res.sendStatus(200);
 
-if(pg.status==="approved"){
+if (pg.status === "approved") {
 
 const userId = pg.metadata?.user_id;
 const produtoId = pg.metadata?.produto;
 
-if(!userId || !produtoId) return res.sendStatus(200);
+if (!userId || !produtoId) return res.sendStatus(200);
 
 const user = await client.users.fetch(userId).catch(()=>null);
-if(!user) return res.sendStatus(200);
+if (!user) return res.sendStatus(200);
 
 const produto = PRODUTOS[produtoId];
 
-let entrega="";
+let entrega = "";
 
-if(produto.tipo==="auto"){
-entrega=CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)];
-}else{
-entrega=produto.link;
+if (produto.tipo === "auto") {
+entrega = CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
+} else {
+entrega = produto.link;
 }
 
-entregues[pg.id]=true;
+entregues[pg.id] = true;
 
-vendas[user.id]=(vendas[user.id]||0)+1;
-dinheiro[user.id]=(dinheiro[user.id]||0)+produto.preco;
+vendas[user.id] = (vendas[user.id] || 0) + 1;
+dinheiro[user.id] = (dinheiro[user.id] || 0) + produto.preco;
 
 salvar();
 
 await user.send(`✅ Pagamento aprovado!\n\n${entrega}`).catch(()=>{});
 
-// logs
-const logs=await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra: <@${user.id}> - ${produto.nome}`);
+const logs = await client.channels.fetch(CANAL_LOGS);
+logs.send(`💰 Compra confirmada: <@${user.id}> - ${produto.nome}`);
 
-// recentes
-const recentes=await client.channels.fetch(CANAL_RECENTES);
+const recentes = await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 
 }
 
-}catch(e){
-console.log("ERRO WEBHOOK:",e);
+} catch (err) {
+console.log("ERRO WEBHOOK:", err);
 }
 
 res.sendStatus(200);
 });
 
-// PORTA CORRETA (ARRUMA 502)
+// PORTA CORRETA (ESSA RESOLVE O 502)
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, "0.0.0.0", ()=>console.log("🔥 Webhook rodando na porta",PORT));
+
+app.listen(PORT, () => {
+console.log("🔥 Webhook rodando na porta " + PORT);
+});
 
 client.login(TOKEN);
