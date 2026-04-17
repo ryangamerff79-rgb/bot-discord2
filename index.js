@@ -6,7 +6,6 @@ ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
 EmbedBuilder,
-AttachmentBuilder,
 REST,
 Routes,
 SlashCommandBuilder
@@ -23,7 +22,8 @@ const client = new Client({
 intents:[
 GatewayIntentBits.Guilds,
 GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent
+GatewayIntentBits.MessageContent,
+GatewayIntentBits.DirectMessages
 ]
 });
 
@@ -35,11 +35,15 @@ const OWNER_ID = "853430402601058305";
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
+const CANAL_FEEDBACK = "1467351899497041942";
+const CANAL_RANK = "1490184769831698655";
 
 // BANCO
 let db = {
 entregues:{},
-historico:[]
+historico:[],
+ranking:{},
+pendenteFeedback:{}
 };
 
 if(fs.existsSync("dados.json")){
@@ -78,16 +82,16 @@ console.log("✅ BOT ONLINE");
 
 // SLASH COMMANDS
 const commands = [
-new SlashCommandBuilder().setName("lucrototal").setDescription("Ver lucro total")
+new SlashCommandBuilder().setName("lucrototal").setDescription("Ver lucro total"),
+new SlashCommandBuilder().setName("lucromes").setDescription("Ver lucro do mês"),
+new SlashCommandBuilder().setName("lucrohoje").setDescription("Ver lucro de hoje"),
+new SlashCommandBuilder().setName("reenviar").setDescription("Reenviar produto")
+.addUserOption(opt=>opt.setName("user").setDescription("Usuário").setRequired(true))
 ].map(c=>c.toJSON());
 
 const rest = new REST({version:"10"}).setToken(TOKEN);
 
-await rest.put(
-Routes.applicationCommands(client.user.id),
-{body:commands}
-);
-
+await rest.put(Routes.applicationCommands(client.user.id),{body:commands});
 });
 
 // PAINEL
@@ -104,6 +108,14 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 )]
 });
 }
+
+// FEEDBACK CAPTURA
+if(msg.channel.type === 1 && db.pendenteFeedback[msg.author.id]){
+const canal = client.channels.cache.get(CANAL_FEEDBACK);
+canal.send(`⭐ Feedback de <@${msg.author.id}>:\n${msg.content}`);
+delete db.pendenteFeedback[msg.author.id];
+salvar();
+}
 });
 
 // INTERAÇÕES
@@ -114,10 +126,7 @@ try{
 // BOTÃO COPIAR
 if(interaction.isButton() && interaction.customId.startsWith("copiar_")){
 const pix = interaction.customId.replace("copiar_","");
-return interaction.reply({
-content:`📋 PIX:\n${pix}`,
-ephemeral:true
-});
+return interaction.reply({content:`📋 PIX:\n${pix}`,ephemeral:true});
 }
 
 // COMPRA
@@ -141,13 +150,9 @@ produto:interaction.customId
 }
 });
 
-// 🔥 PIX
 const pix = pg.point_of_interaction.transaction_data.qr_code;
-
-// 🔥 QR PROFISSIONAL (API externa)
 const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
 
-// CRIAR TICKET
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
 type:0,
@@ -158,55 +163,52 @@ permissionOverwrites:[
 ]
 });
 
-// EMBED
 const embed = new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
-.setDescription(
-`Produto: ${produto.nome}
-Valor: R$${produto.preco}
-
-📋 PIX:
-${pix}
-
-⏳ Expira em 10 minutos`
-)
+.setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\nPIX:\n${pix}`)
 .setImage(qrUrl)
 .setColor("Green");
 
-// BOTÃO
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder()
-.setCustomId(`copiar_${pix}`)
-.setLabel("📋 Copiar PIX")
-.setStyle(ButtonStyle.Primary)
+new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary)
 );
 
-await canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed],
-components:[row]
-});
+await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row]});
 
 interaction.editReply({content:`✅ Ticket criado: ${canal}`});
 
-// FECHAR
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
 }
 
 // SLASH
 if(interaction.isChatInputCommand()){
-if(interaction.user.id !== OWNER_ID) return;
+if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Apenas dono",ephemeral:true});
 
 if(interaction.commandName==="lucrototal"){
-let total = db.historico.reduce((a,b)=>a+b.valor,0);
-interaction.reply(`💰 Total: R$${total}`);
-}
-}
-
-}catch(err){
-console.log("ERRO:",err);
+let total=db.historico.reduce((a,b)=>a+b.valor,0);
+return interaction.reply(`💰 Total: R$${total}`);
 }
 
+if(interaction.commandName==="lucromes"){
+let mes=new Date().getMonth();
+let total=db.historico.filter(x=>new Date(x.data).getMonth()===mes).reduce((a,b)=>a+b.valor,0);
+return interaction.reply(`📅 Mês: R$${total}`);
+}
+
+if(interaction.commandName==="lucrohoje"){
+let hoje=new Date().toDateString();
+let total=db.historico.filter(x=>new Date(x.data).toDateString()===hoje).reduce((a,b)=>a+b.valor,0);
+return interaction.reply(`📆 Hoje: R$${total}`);
+}
+
+if(interaction.commandName==="reenviar"){
+const user=interaction.options.getUser("user");
+return user.send("📦 Reenvio do produto solicitado.").then(()=>interaction.reply("✅ Reenviado"));
+}
+
+}
+
+}catch(e){console.log(e);}
 });
 
 // WEBHOOK
@@ -216,18 +218,17 @@ res.sendStatus(200);
 setTimeout(async ()=>{
 try{
 
-const id = req.body.data?.id;
+const id=req.body.data?.id;
 if(!id) return;
 
-const pg = await payment.get({id});
+const pg=await payment.get({id});
 if(db.entregues[pg.id]) return;
 
 if(pg.status==="approved"){
 
-const userId = pg.metadata.user_id;
-const produto = PRODUTOS[pg.metadata.produto];
-
-const user = await client.users.fetch(userId);
+const userId=pg.metadata.user_id;
+const produto=PRODUTOS[pg.metadata.produto];
+const user=await client.users.fetch(userId);
 
 let entrega = produto.tipo==="auto"
 ? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
@@ -236,18 +237,38 @@ let entrega = produto.tipo==="auto"
 db.entregues[pg.id]=true;
 
 db.historico.push({
-valor:produto.preco
+valor:produto.preco,
+data:new Date()
 });
+
+// ranking
+let mes=new Date().getMonth();
+db.ranking[user.id]=db.ranking[user.id]||{};
+db.ranking[user.id][mes]=(db.ranking[user.id][mes]||0)+1;
 
 salvar();
 
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}`);
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}\n\n⭐ Avalie de 1 a 10 e comente!`);
 
-const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 <@${user.id}> comprou ${produto.nome}`);
+db.pendenteFeedback[user.id]=true;
+salvar();
 
-const recentes = await client.channels.fetch(CANAL_RECENTES);
+const logs=await client.channels.fetch(CANAL_LOGS);
+logs.send(`💰 Compra: <@${user.id}> - ${produto.nome}`);
+
+const recentes=await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
+
+// ranking canal
+const canalRank=await client.channels.fetch(CANAL_RANK);
+let top=Object.entries(db.ranking)
+.map(([id,data])=>({id,total:Object.values(data).reduce((a,b)=>a+b,0)}))
+.sort((a,b)=>b.total-a.total)
+.slice(0,10)
+.map((x,i)=>`#${i+1} <@${x.id}> - ${x.total} compras`)
+.join("\n");
+
+canalRank.send(`🏆 Ranking:\n${top}`);
 
 }
 
@@ -257,7 +278,7 @@ recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 });
 
 // PORTA
-const PORT = process.env.PORT;
+const PORT=process.env.PORT;
 app.listen(PORT,()=>console.log("🔥 Webhook rodando"));
 
 // LOGIN
