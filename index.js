@@ -5,10 +5,7 @@ ButtonBuilder,
 ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-EmbedBuilder,
-REST,
-Routes,
-SlashCommandBuilder
+EmbedBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -30,19 +27,19 @@ GatewayIntentBits.DirectMessages
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
-const OWNER_ID = "853430402601058305";
 
+const OWNER_ID = "853430402601058305";
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
 const CANAL_FEEDBACK = "1467351899497041942";
-const CANAL_RANK = "1490184769831698655";
 
 // BANCO
 let db = {
 entregues:{},
 historico:[],
-ranking:{},
+clientes:{},
+tickets:{},
 pendenteFeedback:{}
 };
 
@@ -67,7 +64,6 @@ gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
 sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
 };
 
-// CONTAS GTA
 const CONTAS_GTA=[
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -77,25 +73,12 @@ const CONTAS_GTA=[
 "fxnslyfiug:Malaikane2024"
 ];
 
-client.once("ready", async ()=>{
-console.log("✅ BOT ONLINE");
-
-// SLASH COMMANDS
-const commands = [
-new SlashCommandBuilder().setName("lucrototal").setDescription("Ver lucro total"),
-new SlashCommandBuilder().setName("lucromes").setDescription("Ver lucro do mês"),
-new SlashCommandBuilder().setName("lucrohoje").setDescription("Ver lucro de hoje"),
-new SlashCommandBuilder().setName("reenviar").setDescription("Reenviar produto")
-.addUserOption(opt=>opt.setName("user").setDescription("Usuário").setRequired(true))
-].map(c=>c.toJSON());
-
-const rest = new REST({version:"10"}).setToken(TOKEN);
-
-await rest.put(Routes.applicationCommands(client.user.id),{body:commands});
-});
+client.once("ready",()=>console.log("✅ BOT ONLINE"));
 
 // PAINEL
-client.on("messageCreate",msg=>{
+client.on("messageCreate",async msg=>{
+
+// painel
 if(msg.content==="!painel"){
 msg.channel.send({
 content:"🚀 Loja",
@@ -109,28 +92,31 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 });
 }
 
-// FEEDBACK CAPTURA
-if(msg.channel.type === 1 && db.pendenteFeedback[msg.author.id]){
-const canal = client.channels.cache.get(CANAL_FEEDBACK);
-canal.send(`⭐ Feedback de <@${msg.author.id}>:\n${msg.content}`);
+// feedback
+if(msg.channel.type===1 && db.pendenteFeedback[msg.author.id]){
+let nota = parseInt(msg.content);
+let estrelas = "⭐".repeat(Math.min(Math.max(nota,1),10));
+
+const canal = await client.channels.fetch(CANAL_FEEDBACK);
+canal.send(`${estrelas} (${nota}/10)\n${msg.content}\n<@${msg.author.id}>`);
+
 delete db.pendenteFeedback[msg.author.id];
 salvar();
 }
+
 });
 
 // INTERAÇÕES
-client.on("interactionCreate", async interaction => {
+client.on("interactionCreate",async interaction=>{
 
 try{
 
-// BOTÃO COPIAR
-if(interaction.isButton() && interaction.customId.startsWith("copiar_")){
-const pix = interaction.customId.replace("copiar_","");
-return interaction.reply({content:`📋 PIX:\n${pix}`,ephemeral:true});
-}
+if(!interaction.isButton()) return;
 
-// COMPRA
-if(interaction.isButton()){
+// anti flood
+if(db.tickets[interaction.user.id]){
+return interaction.reply({content:"❌ Você já tem um pagamento ativo!",ephemeral:true});
+}
 
 const produto = PRODUTOS[interaction.customId];
 if(!produto) return;
@@ -151,7 +137,7 @@ produto:interaction.customId
 });
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
-const qrUrl = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
+const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
 
 const canal = await interaction.guild.channels.create({
 name:`ticket-${interaction.user.username}`,
@@ -163,49 +149,37 @@ permissionOverwrites:[
 ]
 });
 
-const embed = new EmbedBuilder()
+db.tickets[interaction.user.id]=canal.id;
+salvar();
+
+const embed=new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
 .setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\nPIX:\n${pix}`)
-.setImage(qrUrl)
+.setImage(qr)
 .setColor("Green");
 
-const row = new ActionRowBuilder().addComponents(
+const row=new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary)
 );
 
 await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],components:[row]});
 
-interaction.editReply({content:`✅ Ticket criado: ${canal}`});
+// funil
+setTimeout(()=>canal.send("⚠️ Esqueceu de pagar? Finalize agora!"),300000);
 
-setTimeout(()=>canal.delete().catch(()=>{}),600000);
+setTimeout(()=>{
+canal.send("❌ Expirado");
+delete db.tickets[interaction.user.id];
+salvar();
+canal.delete().catch(()=>{});
+},600000);
+
 }
 
-// SLASH
-if(interaction.isChatInputCommand()){
-if(interaction.user.id !== OWNER_ID) return interaction.reply({content:"❌ Apenas dono",ephemeral:true});
-
-if(interaction.commandName==="lucrototal"){
-let total=db.historico.reduce((a,b)=>a+b.valor,0);
-return interaction.reply(`💰 Total: R$${total}`);
-}
-
-if(interaction.commandName==="lucromes"){
-let mes=new Date().getMonth();
-let total=db.historico.filter(x=>new Date(x.data).getMonth()===mes).reduce((a,b)=>a+b.valor,0);
-return interaction.reply(`📅 Mês: R$${total}`);
-}
-
-if(interaction.commandName==="lucrohoje"){
-let hoje=new Date().toDateString();
-let total=db.historico.filter(x=>new Date(x.data).toDateString()===hoje).reduce((a,b)=>a+b.valor,0);
-return interaction.reply(`📆 Hoje: R$${total}`);
-}
-
-if(interaction.commandName==="reenviar"){
-const user=interaction.options.getUser("user");
-return user.send("📦 Reenvio do produto solicitado.").then(()=>interaction.reply("✅ Reenviado"));
-}
-
+// copiar
+if(interaction.customId.startsWith("copiar_")){
+const pix = interaction.customId.replace("copiar_","");
+interaction.reply({content:pix,ephemeral:true});
 }
 
 }catch(e){console.log(e);}
@@ -236,39 +210,29 @@ let entrega = produto.tipo==="auto"
 
 db.entregues[pg.id]=true;
 
-db.historico.push({
-valor:produto.preco,
-data:new Date()
-});
+db.historico.push({valor:produto.preco,data:new Date()});
 
-// ranking
-let mes=new Date().getMonth();
-db.ranking[user.id]=db.ranking[user.id]||{};
-db.ranking[user.id][mes]=(db.ranking[user.id][mes]||0)+1;
+// perfil cliente
+db.clientes[user.id]=db.clientes[user.id]||{gasto:0,compras:0};
+db.clientes[user.id].gasto+=produto.preco;
+db.clientes[user.id].compras++;
+
+delete db.tickets[user.id];
 
 salvar();
 
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}\n\n⭐ Avalie de 1 a 10 e comente!`);
+await user.send(`✅ Pago!\n${entrega}\n\nAvalie de 1 a 10`);
 
 db.pendenteFeedback[user.id]=true;
-salvar();
 
 const logs=await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra: <@${user.id}> - ${produto.nome}`);
+logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}`);
 
 const recentes=await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 
-// ranking canal
-const canalRank=await client.channels.fetch(CANAL_RANK);
-let top=Object.entries(db.ranking)
-.map(([id,data])=>({id,total:Object.values(data).reduce((a,b)=>a+b,0)}))
-.sort((a,b)=>b.total-a.total)
-.slice(0,10)
-.map((x,i)=>`#${i+1} <@${x.id}> - ${x.total} compras`)
-.join("\n");
-
-canalRank.send(`🏆 Ranking:\n${top}`);
+// recompra
+setTimeout(()=>user.send("🔥 Volta! Temos mais produtos!").catch(()=>{}),86400000);
 
 }
 
