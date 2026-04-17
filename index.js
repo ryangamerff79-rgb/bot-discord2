@@ -28,15 +28,18 @@ GatewayIntentBits.DirectMessages
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 
-if (!TOKEN) console.log("❌ TOKEN não definido");
-if (!MP_TOKEN) console.log("❌ MP_TOKEN não definido");
-
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
 
 // BANCO
-let db = { entregues: {}, tickets: {} };
+let db = {
+entregues: {},
+tickets: {},
+vendas: {},
+dinheiro: {},
+feedbacks: []
+};
 
 if (fs.existsSync("dados.json")) {
 db = JSON.parse(fs.readFileSync("dados.json"));
@@ -69,15 +72,20 @@ const CONTAS_GTA = [
 "fxnslyfiug:Malaikane2024"
 ];
 
-client.once("ready", () => {
-console.log("✅ BOT ONLINE");
-});
+client.once("ready", () => console.log("✅ BOT ONLINE"));
+
+// PAINEL + COMANDOS
+client.on("messageCreate", async msg => {
+
+if (msg.author.bot) return;
 
 // PAINEL
-client.on("messageCreate", async msg => {
 if (msg.content === "!painel") {
+
+let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
+
 msg.channel.send({
-content: "🚀 Loja",
+content: `🚀 DIDDY STORE\n💰 ${total} vendas realizadas\n💳 Pagou = recebeu na hora`,
 components: [
 new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId("opt5").setLabel("R$5 Básica").setStyle(ButtonStyle.Primary),
@@ -89,6 +97,56 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 ]
 });
 }
+
+// LUCRO
+if (msg.content === "!lucro") {
+
+let vendas = Object.values(db.vendas).reduce((a,b)=>a+b,0);
+let dinheiro = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
+
+msg.reply(`💰 LUCRO\n\n🛒 Vendas: ${vendas}\n💵 Total: R$${dinheiro}`);
+}
+
+// RANKING
+if (msg.content === "!ranking") {
+
+let ranking = Object.entries(db.vendas)
+.sort((a,b)=>b[1]-a[1])
+.slice(0,5)
+.map((x,i)=>`#${i+1} <@${x[0]}> - ${x[1]} compras`)
+.join("\n");
+
+msg.reply(`🏆 TOP CLIENTES\n\n${ranking || "Sem dados"}`);
+}
+
+// MÉDIA
+if (msg.content === "!media") {
+
+if (db.feedbacks.length === 0) return msg.reply("Sem avaliações");
+
+let media = db.feedbacks.reduce((a,b)=>a+b.nota,0) / db.feedbacks.length;
+
+msg.reply(`⭐ Média: ${media.toFixed(1)}/5 (${db.feedbacks.length} avaliações)`);
+}
+
+// AVALIAÇÃO
+if (!isNaN(msg.content)) {
+
+let nota = Number(msg.content);
+
+if (nota >= 1 && nota <= 5) {
+
+db.feedbacks.push({
+user: msg.author.id,
+nota: nota
+});
+
+salvar();
+
+msg.reply("✅ Avaliação salva!");
+}
+}
+
 });
 
 // INTERAÇÃO
@@ -103,7 +161,7 @@ return interaction.reply({ content: pix, ephemeral: true });
 }
 
 if (db.tickets[interaction.user.id]) {
-return interaction.reply({ content: "❌ Você já tem um pagamento aberto!", ephemeral: true });
+return interaction.reply({ content: "❌ Já tem pagamento aberto!", ephemeral: true });
 }
 
 const produto = PRODUTOS[interaction.customId];
@@ -127,17 +185,8 @@ produto: interaction.customId
 }
 });
 } catch (err) {
-console.log("❌ ERRO MP:", err);
-return interaction.editReply({
-content: "❌ Erro ao gerar pagamento. Verifique o MP_TOKEN."
-});
-}
-
-if (!pg || !pg.point_of_interaction) {
-console.log("❌ RESPOSTA INVÁLIDA MP:", pg);
-return interaction.editReply({
-content: "❌ Falha ao gerar PIX."
-});
+console.log("ERRO MP:", err);
+return interaction.editReply({ content: "❌ Erro no pagamento" });
 }
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
@@ -175,16 +224,10 @@ embeds: [embed],
 components: [row]
 });
 
-interaction.editReply({ content: `✅ Ticket criado: ${canal}` });
-
-setTimeout(() => {
-delete db.tickets[interaction.user.id];
-salvar();
-canal.delete().catch(() => {});
-}, 600000);
+interaction.editReply({ content: `✅ Ticket: ${canal}` });
 
 } catch (err) {
-console.log("❌ ERRO INTERACTION:", err);
+console.log("ERRO:", err);
 }
 });
 
@@ -198,37 +241,29 @@ try {
 const id = req.body?.data?.id;
 if (!id) return;
 
-let pg;
-
-try {
-pg = await payment.get({ id });
-} catch (err) {
-console.log("❌ ERRO GET MP:", err);
-return;
-}
-
+const pg = await payment.get({ id });
 if (!pg || db.entregues[pg.id]) return;
 
 if (pg.status === "approved") {
 
-const userId = pg.metadata?.user_id;
-const produtoId = pg.metadata?.produto;
-
-if (!userId || !produtoId) return;
-
-const produto = PRODUTOS[produtoId];
-const user = await client.users.fetch(userId).catch(() => null);
+const userId = pg.metadata.user_id;
+const produto = PRODUTOS[pg.metadata.produto];
+const user = await client.users.fetch(userId).catch(()=>null);
 if (!user) return;
 
 let entrega = produto.tipo === "auto"
-? CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)]
+? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
 : produto.link;
 
 db.entregues[pg.id] = true;
 delete db.tickets[user.id];
+
+db.vendas[user.id] = (db.vendas[user.id]||0)+1;
+db.dinheiro[user.id] = (db.dinheiro[user.id]||0)+produto.preco;
+
 salvar();
 
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}`).catch(() => {});
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}\n\n⭐ Avalie de 1 a 5`).catch(()=>{});
 
 const logs = await client.channels.fetch(CANAL_LOGS);
 logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}`);
@@ -239,15 +274,13 @@ recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 }
 
 } catch (err) {
-console.log("❌ ERRO WEBHOOK:", err);
+console.log("ERRO WEBHOOK:", err);
 }
-}, 100);
+},100);
 });
 
 // PORTA
 const PORT = process.env.PORT || 3000;
-app.listen(PORT, () => {
-console.log("🔥 Webhook rodando na porta " + PORT);
-});
+app.listen(PORT, ()=>console.log("🔥 Webhook rodando"));
 
 client.login(TOKEN);
