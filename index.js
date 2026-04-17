@@ -28,15 +28,15 @@ GatewayIntentBits.DirectMessages
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 
+if (!TOKEN) console.log("❌ TOKEN não definido");
+if (!MP_TOKEN) console.log("❌ MP_TOKEN não definido");
+
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
 
 // BANCO
-let db = {
-entregues: {},
-tickets: {}
-};
+let db = { entregues: {}, tickets: {} };
 
 if (fs.existsSync("dados.json")) {
 db = JSON.parse(fs.readFileSync("dados.json"));
@@ -59,7 +59,7 @@ gta: { preco: 5, nome: "Conta GTA V", tipo: "auto" },
 sensi: { preco: 5, nome: "Pack Sensi", tipo: "link", link: "https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file" }
 };
 
-// CONTAS GTA
+// CONTAS
 const CONTAS_GTA = [
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -111,7 +111,10 @@ if (!produto) return;
 
 await interaction.reply({ content: "⏳ Gerando pagamento...", ephemeral: true });
 
-const pg = await payment.create({
+let pg;
+
+try {
+pg = await payment.create({
 body: {
 transaction_amount: Number(produto.preco),
 description: produto.nome,
@@ -123,6 +126,19 @@ produto: interaction.customId
 }
 }
 });
+} catch (err) {
+console.log("❌ ERRO MP:", err);
+return interaction.editReply({
+content: "❌ Erro ao gerar pagamento. Verifique o MP_TOKEN."
+});
+}
+
+if (!pg || !pg.point_of_interaction) {
+console.log("❌ RESPOSTA INVÁLIDA MP:", pg);
+return interaction.editReply({
+content: "❌ Falha ao gerar PIX."
+});
+}
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
 const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
@@ -168,7 +184,7 @@ canal.delete().catch(() => {});
 }, 600000);
 
 } catch (err) {
-console.log("ERRO:", err);
+console.log("❌ ERRO INTERACTION:", err);
 }
 });
 
@@ -179,28 +195,34 @@ res.sendStatus(200);
 setTimeout(async () => {
 try {
 
-const id = req.body.data?.id;
+const id = req.body?.data?.id;
 if (!id) return;
 
-const pg = await payment.get({ id });
+let pg;
 
-if (db.entregues[pg.id]) return;
+try {
+pg = await payment.get({ id });
+} catch (err) {
+console.log("❌ ERRO GET MP:", err);
+return;
+}
+
+if (!pg || db.entregues[pg.id]) return;
 
 if (pg.status === "approved") {
 
-const userId = pg.metadata.user_id;
-const produto = PRODUTOS[pg.metadata.produto];
+const userId = pg.metadata?.user_id;
+const produtoId = pg.metadata?.produto;
 
+if (!userId || !produtoId) return;
+
+const produto = PRODUTOS[produtoId];
 const user = await client.users.fetch(userId).catch(() => null);
 if (!user) return;
 
-let entrega = "";
-
-if (produto.tipo === "auto") {
-entrega = CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
-} else {
-entrega = produto.link;
-}
+let entrega = produto.tipo === "auto"
+? CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)]
+: produto.link;
 
 db.entregues[pg.id] = true;
 delete db.tickets[user.id];
@@ -217,7 +239,7 @@ recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 }
 
 } catch (err) {
-console.log("ERRO WEBHOOK:", err);
+console.log("❌ ERRO WEBHOOK:", err);
 }
 }, 100);
 });
@@ -228,5 +250,4 @@ app.listen(PORT, () => {
 console.log("🔥 Webhook rodando na porta " + PORT);
 });
 
-// LOGIN
 client.login(TOKEN);
