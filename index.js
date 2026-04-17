@@ -28,7 +28,7 @@ GatewayIntentBits.DirectMessages
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
-const CLIENT_ID = process.env.CLIENT_ID; // ID do bot
+const CLIENT_ID = process.env.CLIENT_ID;
 
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
@@ -74,7 +74,47 @@ const CONTAS_GTA = [
 "fxnslyfiug:Malaikane2024"
 ];
 
-// SLASH COMMANDS
+// 🔥 FUNÇÃO RETRY PIX
+async function gerarPixComRetry(produto, userId) {
+
+for (let i = 1; i <= 3; i++) {
+try {
+
+console.log(`🔁 Tentativa ${i}`);
+
+const pg = await payment.create({
+body: {
+transaction_amount: Number(produto.preco),
+description: produto.nome,
+payment_method_id: "pix",
+payer: { email: `user${userId}@gmail.com` },
+metadata: {
+user_id: userId,
+produto: produto.id
+}
+}
+});
+
+const pix = pg?.point_of_interaction?.transaction_data?.qr_code;
+
+if (pix) {
+console.log("✅ PIX OK");
+return { pix };
+}
+
+console.log("⚠️ PIX vazio");
+
+} catch (err) {
+console.log(`❌ ERRO tentativa ${i}:`, err.message);
+}
+
+await new Promise(r => setTimeout(r, 1000));
+}
+
+return null;
+}
+
+// SLASH
 const commands = [
 new SlashCommandBuilder().setName("painel").setDescription("Abrir loja"),
 new SlashCommandBuilder().setName("lucro").setDescription("Ver lucro"),
@@ -85,7 +125,6 @@ new SlashCommandBuilder().setName("media").setDescription("Média de avaliaçõe
 client.once("ready", async () => {
 console.log("✅ BOT ONLINE");
 
-// registra comandos
 const rest = new REST({ version: "10" }).setToken(TOKEN);
 
 await rest.put(
@@ -93,10 +132,10 @@ Routes.applicationCommands(CLIENT_ID),
 { body: commands }
 );
 
-console.log("✅ Comandos / registrados");
+console.log("✅ Slash registrados");
 });
 
-// INTERAÇÕES
+// INTERAÇÃO
 client.on("interactionCreate", async interaction => {
 try {
 
@@ -108,7 +147,7 @@ if (interaction.commandName === "painel") {
 let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
 
 return interaction.reply({
-content: `🚀 DIDDY STORE\n💰 ${total} vendas realizadas\n💳 Pagou = recebeu na hora`,
+content: `🚀 DIDDY STORE\n💰 ${total} vendas\n💳 Pagou = recebeu na hora`,
 components: [
 new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId("opt5").setLabel("R$5 Básica").setStyle(ButtonStyle.Primary),
@@ -124,30 +163,27 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 if (interaction.commandName === "lucro") {
 let vendas = Object.values(db.vendas).reduce((a,b)=>a+b,0);
 let dinheiro = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
-
-return interaction.reply(`💰 Vendas: ${vendas}\n💵 Total: R$${dinheiro}`);
+return interaction.reply(`💰 ${vendas} vendas\n💵 R$${dinheiro}`);
 }
 
 if (interaction.commandName === "ranking") {
 let ranking = Object.entries(db.vendas)
 .sort((a,b)=>b[1]-a[1])
 .slice(0,5)
-.map((x,i)=>`#${i+1} <@${x[0]}> - ${x[1]} compras`)
+.map((x,i)=>`#${i+1} <@${x[0]}> - ${x[1]}`)
 .join("\n");
 
-return interaction.reply(`🏆 TOP CLIENTES\n\n${ranking || "Sem dados"}`);
+return interaction.reply(`🏆 TOP\n${ranking || "Sem dados"}`);
 }
 
 if (interaction.commandName === "media") {
-if (db.feedbacks.length === 0) return interaction.reply("Sem avaliações");
-
-let media = db.feedbacks.reduce((a,b)=>a+b.nota,0) / db.feedbacks.length;
-
-return interaction.reply(`⭐ Média: ${media.toFixed(1)}/5`);
+if (!db.feedbacks.length) return interaction.reply("Sem avaliações");
+let media = db.feedbacks.reduce((a,b)=>a+b.nota,0)/db.feedbacks.length;
+return interaction.reply(`⭐ ${media.toFixed(1)}/5`);
 }
 }
 
-// BOTÕES
+// BOTÃO
 if (interaction.isButton()) {
 
 if (interaction.customId.startsWith("copiar_")) {
@@ -162,35 +198,23 @@ return interaction.reply({ content: "❌ Já tem pagamento aberto!", ephemeral: 
 const produto = PRODUTOS[interaction.customId];
 if (!produto) return;
 
+produto.id = interaction.customId;
+
 await interaction.reply({ content: "⏳ Gerando pagamento...", ephemeral: true });
 
-let pg;
+// 🔥 USANDO RETRY
+const resultado = await gerarPixComRetry(produto, interaction.user.id);
 
-try {
-pg = await payment.create({
-body: {
-transaction_amount: Number(produto.preco),
-description: produto.nome,
-payment_method_id: "pix",
-payer: { email: `user${interaction.user.id}@gmail.com` },
-metadata: {
-user_id: interaction.user.id,
-produto: interaction.customId
-}
-}
+if (!resultado) {
+return interaction.editReply({
+content: "❌ Falha ao gerar PIX (3 tentativas)"
 });
-} catch (err) {
-console.log("ERRO MP:", err);
-return interaction.editReply({ content: "❌ Erro ao gerar pagamento" });
 }
 
-if (!pg?.point_of_interaction?.transaction_data) {
-return interaction.editReply({ content: "❌ Falha ao gerar PIX" });
-}
-
-const pix = pg.point_of_interaction.transaction_data.qr_code;
+const pix = resultado.pix;
 const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
 
+// 🔥 cria ticket só depois
 const canal = await interaction.guild.channels.create({
 name: `ticket-${interaction.user.username}`,
 type: 0,
@@ -227,7 +251,7 @@ interaction.editReply({ content: `✅ Ticket criado: ${canal}` });
 }
 
 } catch (err) {
-console.log("ERRO:", err);
+console.log("❌ ERRO:", err);
 }
 });
 
@@ -263,17 +287,17 @@ db.dinheiro[user.id] = (db.dinheiro[user.id]||0)+produto.preco;
 
 salvar();
 
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}\n\n⭐ Avalie de 1 a 5`).catch(()=>{});
+await user.send(`✅ Pagamento aprovado!\n\n${entrega}`).catch(()=>{});
 
 const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}`);
+logs.send(`💰 <@${user.id}> comprou ${produto.nome}`);
 
 const recentes = await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
 }
 
 } catch (err) {
-console.log("ERRO WEBHOOK:", err);
+console.log("❌ ERRO WEBHOOK:", err);
 }
 },100);
 });
