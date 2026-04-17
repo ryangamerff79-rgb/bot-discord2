@@ -5,7 +5,10 @@ ButtonBuilder,
 ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-EmbedBuilder
+EmbedBuilder,
+REST,
+Routes,
+SlashCommandBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -18,8 +21,6 @@ app.use(express.json());
 const client = new Client({
 intents: [
 GatewayIntentBits.Guilds,
-GatewayIntentBits.GuildMessages,
-GatewayIntentBits.MessageContent,
 GatewayIntentBits.DirectMessages
 ]
 });
@@ -27,6 +28,7 @@ GatewayIntentBits.DirectMessages
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
+const CLIENT_ID = process.env.CLIENT_ID; // ID do bot
 
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
@@ -72,19 +74,40 @@ const CONTAS_GTA = [
 "fxnslyfiug:Malaikane2024"
 ];
 
-client.once("ready", () => console.log("✅ BOT ONLINE"));
+// SLASH COMMANDS
+const commands = [
+new SlashCommandBuilder().setName("painel").setDescription("Abrir loja"),
+new SlashCommandBuilder().setName("lucro").setDescription("Ver lucro"),
+new SlashCommandBuilder().setName("ranking").setDescription("Top clientes"),
+new SlashCommandBuilder().setName("media").setDescription("Média de avaliações")
+].map(c => c.toJSON());
 
-// PAINEL + COMANDOS
-client.on("messageCreate", async msg => {
+client.once("ready", async () => {
+console.log("✅ BOT ONLINE");
 
-if (msg.author.bot) return;
+// registra comandos
+const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-// PAINEL
-if (msg.content === "!painel") {
+await rest.put(
+Routes.applicationCommands(CLIENT_ID),
+{ body: commands }
+);
+
+console.log("✅ Comandos / registrados");
+});
+
+// INTERAÇÕES
+client.on("interactionCreate", async interaction => {
+try {
+
+// SLASH
+if (interaction.isChatInputCommand()) {
+
+if (interaction.commandName === "painel") {
 
 let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
 
-msg.channel.send({
+return interaction.reply({
 content: `🚀 DIDDY STORE\n💰 ${total} vendas realizadas\n💳 Pagou = recebeu na hora`,
 components: [
 new ActionRowBuilder().addComponents(
@@ -98,62 +121,34 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 });
 }
 
-// LUCRO
-if (msg.content === "!lucro") {
-
+if (interaction.commandName === "lucro") {
 let vendas = Object.values(db.vendas).reduce((a,b)=>a+b,0);
 let dinheiro = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
 
-msg.reply(`💰 LUCRO\n\n🛒 Vendas: ${vendas}\n💵 Total: R$${dinheiro}`);
+return interaction.reply(`💰 Vendas: ${vendas}\n💵 Total: R$${dinheiro}`);
 }
 
-// RANKING
-if (msg.content === "!ranking") {
-
+if (interaction.commandName === "ranking") {
 let ranking = Object.entries(db.vendas)
 .sort((a,b)=>b[1]-a[1])
 .slice(0,5)
 .map((x,i)=>`#${i+1} <@${x[0]}> - ${x[1]} compras`)
 .join("\n");
 
-msg.reply(`🏆 TOP CLIENTES\n\n${ranking || "Sem dados"}`);
+return interaction.reply(`🏆 TOP CLIENTES\n\n${ranking || "Sem dados"}`);
 }
 
-// MÉDIA
-if (msg.content === "!media") {
-
-if (db.feedbacks.length === 0) return msg.reply("Sem avaliações");
+if (interaction.commandName === "media") {
+if (db.feedbacks.length === 0) return interaction.reply("Sem avaliações");
 
 let media = db.feedbacks.reduce((a,b)=>a+b.nota,0) / db.feedbacks.length;
 
-msg.reply(`⭐ Média: ${media.toFixed(1)}/5 (${db.feedbacks.length} avaliações)`);
-}
-
-// AVALIAÇÃO
-if (!isNaN(msg.content)) {
-
-let nota = Number(msg.content);
-
-if (nota >= 1 && nota <= 5) {
-
-db.feedbacks.push({
-user: msg.author.id,
-nota: nota
-});
-
-salvar();
-
-msg.reply("✅ Avaliação salva!");
+return interaction.reply(`⭐ Média: ${media.toFixed(1)}/5`);
 }
 }
 
-});
-
-// INTERAÇÃO
-client.on("interactionCreate", async interaction => {
-try {
-
-if (!interaction.isButton()) return;
+// BOTÕES
+if (interaction.isButton()) {
 
 if (interaction.customId.startsWith("copiar_")) {
 const pix = interaction.customId.replace("copiar_", "");
@@ -186,7 +181,11 @@ produto: interaction.customId
 });
 } catch (err) {
 console.log("ERRO MP:", err);
-return interaction.editReply({ content: "❌ Erro no pagamento" });
+return interaction.editReply({ content: "❌ Erro ao gerar pagamento" });
+}
+
+if (!pg?.point_of_interaction?.transaction_data) {
+return interaction.editReply({ content: "❌ Falha ao gerar PIX" });
 }
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
@@ -224,7 +223,8 @@ embeds: [embed],
 components: [row]
 });
 
-interaction.editReply({ content: `✅ Ticket: ${canal}` });
+interaction.editReply({ content: `✅ Ticket criado: ${canal}` });
+}
 
 } catch (err) {
 console.log("ERRO:", err);
@@ -270,7 +270,6 @@ logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}`);
 
 const recentes = await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
-
 }
 
 } catch (err) {
@@ -279,7 +278,6 @@ console.log("ERRO WEBHOOK:", err);
 },100);
 });
 
-// PORTA
 const PORT = process.env.PORT || 3000;
 app.listen(PORT, ()=>console.log("🔥 Webhook rodando"));
 
