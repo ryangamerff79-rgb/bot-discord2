@@ -5,7 +5,11 @@ ButtonBuilder,
 ActionRowBuilder,
 ButtonStyle,
 PermissionsBitField,
-EmbedBuilder
+EmbedBuilder,
+AttachmentBuilder,
+REST,
+Routes,
+SlashCommandBuilder
 } = require("discord.js");
 
 const { MercadoPagoConfig, Payment } = require("mercadopago");
@@ -26,23 +30,26 @@ GatewayIntentBits.MessageContent
 // CONFIG
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
+const OWNER_ID = "853430402601058305";
 
 const CATEGORIA_ID = "1466619720487800845";
 const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
 
 // BANCO
-let vendas={}, dinheiro={}, entregues={};
+let db = {
+vendas:{},
+dinheiro:{},
+entregues:{},
+historico:[]
+};
 
 if(fs.existsSync("dados.json")){
-const data = JSON.parse(fs.readFileSync("dados.json"));
-vendas=data.vendas||{};
-dinheiro=data.dinheiro||{};
-entregues=data.entregues||{};
+db = JSON.parse(fs.readFileSync("dados.json"));
 }
 
 function salvar(){
-fs.writeFileSync("dados.json",JSON.stringify({vendas,dinheiro,entregues},null,2));
+fs.writeFileSync("dados.json",JSON.stringify(db,null,2));
 }
 
 // MP
@@ -58,7 +65,6 @@ gta:{preco:5,nome:"Conta GTA V",tipo:"auto"},
 sensi:{preco:5,nome:"Pack Sensi",tipo:"link",link:"https://www.mediafire.com/file/uaevsk3wdui78uw/PACK_SENSI_DIDDY.rar/file"}
 };
 
-// CONTAS GTA
 const CONTAS_GTA=[
 "PODTOPTAP:dream282521",
 "gta19710559:85sJzrKnu",
@@ -68,10 +74,30 @@ const CONTAS_GTA=[
 "fxnslyfiug:Malaikane2024"
 ];
 
-client.once("clientReady",()=>console.log("✅ BOT ONLINE"));
+client.once("ready", async ()=>{
+
+console.log("✅ BOT ONLINE");
+
+// SLASH COMMANDS
+const commands = [
+new SlashCommandBuilder().setName("lucrohoje").setDescription("Ver lucro de hoje"),
+new SlashCommandBuilder().setName("lucromes").setDescription("Ver lucro do mês"),
+new SlashCommandBuilder().setName("lucrototal").setDescription("Ver lucro total"),
+new SlashCommandBuilder().setName("reenviar").setDescription("Reenviar produto")
+.addStringOption(o=>o.setName("id").setDescription("ID do pagamento").setRequired(true))
+].map(c=>c.toJSON());
+
+const rest = new REST({version:"10"}).setToken(TOKEN);
+
+await rest.put(
+Routes.applicationCommands(client.user.id),
+{body:commands}
+);
+
+});
 
 // PAINEL
-client.on("messageCreate",async msg=>{
+client.on("messageCreate",msg=>{
 if(msg.content==="!painel"){
 msg.channel.send({
 content:"🚀 Loja",
@@ -88,12 +114,11 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 
 // COMPRA
 client.on("interactionCreate", async interaction => {
-try{
 
-if(!interaction.isButton()) return;
-if(!PRODUTOS[interaction.customId]) return;
+if(interaction.isButton()){
 
 const produto = PRODUTOS[interaction.customId];
+if(!produto) return;
 
 await interaction.reply({content:"⏳ Gerando pagamento...",ephemeral:true});
 
@@ -103,14 +128,12 @@ transaction_amount:Number(produto.preco),
 description:produto.nome,
 payment_method_id:"pix",
 payer:{email:`user${interaction.user.id}@gmail.com`},
-metadata:{
-user_id:interaction.user.id,
-produto:interaction.customId
-}
+metadata:{user_id:interaction.user.id,produto:interaction.customId}
 }
 });
 
-const pix = pg.point_of_interaction?.transaction_data?.qr_code || "Erro ao gerar PIX";
+const pix = pg.point_of_interaction.transaction_data.qr_code;
+const qr = pg.point_of_interaction.transaction_data.qr_code_base64;
 
 // ticket
 const canal = await interaction.guild.channels.create({
@@ -123,89 +146,128 @@ permissionOverwrites:[
 ]
 });
 
-const embed=new EmbedBuilder()
+const embed = new EmbedBuilder()
 .setTitle("💳 PAGAMENTO PIX")
-.setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\nPIX:\n${pix}`)
+.setDescription(`Produto: ${produto.nome}\nValor: R$${produto.preco}\n\nPIX:\n\```${pix}````)
 .setColor("Green");
 
-await canal.send({
-content:`<@${interaction.user.id}>`,
-embeds:[embed]
-});
+const files=[];
+if(qr){
+const buffer = Buffer.from(qr,"base64");
+files.push(new AttachmentBuilder(buffer,{name:"qr.png"}));
+embed.setImage("attachment://qr.png");
+}
+
+const row = new ActionRowBuilder().addComponents(
+new ButtonBuilder().setCustomId(`copiar_${pix}`).setLabel("📋 Copiar PIX").setStyle(ButtonStyle.Primary)
+);
+
+await canal.send({content:`<@${interaction.user.id}>`,embeds:[embed],files,components:[row]});
 
 interaction.editReply({content:`✅ Ticket: ${canal}`});
 
-// fechar 10 min
 setTimeout(()=>canal.delete().catch(()=>{}),600000);
-
-}catch(err){
-console.log("ERRO BOT:",err);
 }
+
+// COPIAR PIX
+if(interaction.customId?.startsWith("copiar_")){
+const pix = interaction.customId.replace("copiar_","");
+return interaction.reply({content:`📋 PIX:\n\```${pix}````,ephemeral:true});
+}
+
+// SLASH
+if(interaction.isChatInputCommand()){
+
+if(interaction.user.id !== OWNER_ID)
+return interaction.reply({content:"❌ Apenas dono",ephemeral:true});
+
+const hoje = new Date().toLocaleDateString();
+const mes = new Date().getMonth();
+
+if(interaction.commandName==="lucrohoje"){
+let total = db.historico.filter(x=>x.data===hoje).reduce((a,b)=>a+b.valor,0);
+interaction.reply(`💰 Hoje: R$${total}`);
+}
+
+if(interaction.commandName==="lucromes"){
+let total = db.historico.filter(x=>new Date(x.timestamp).getMonth()===mes).reduce((a,b)=>a+b.valor,0);
+interaction.reply(`💰 Mês: R$${total}`);
+}
+
+if(interaction.commandName==="lucrototal"){
+let total = db.historico.reduce((a,b)=>a+b.valor,0);
+interaction.reply(`💰 Total: R$${total}`);
+}
+
+if(interaction.commandName==="reenviar"){
+const id = interaction.options.getString("id");
+const venda = db.historico.find(x=>x.id===id);
+if(!venda) return interaction.reply("Não encontrado");
+
+const user = await client.users.fetch(venda.user);
+await user.send(`📦 Reenvio:\n${venda.entrega}`);
+
+interaction.reply("Reenviado");
+}
+
+}
+
 });
 
-// WEBHOOK (RESPOSTA RÁPIDA PRA EVITAR 502)
-app.post("/webhook", async (req, res) => {
-
-res.sendStatus(200); // responde rápido
+// WEBHOOK
+app.post("/webhook",(req,res)=>{
+res.sendStatus(200);
 
 setTimeout(async ()=>{
+try{
 
-try {
+const id = req.body.data?.id;
+if(!id) return;
 
-console.log("WEBHOOK:", req.body);
+const pg = await payment.get({id});
+if(db.entregues[pg.id]) return;
 
-if (!req.body.data?.id) return;
+if(pg.status==="approved"){
 
-const pg = await payment.get({ id: req.body.data.id });
+const userId = pg.metadata.user_id;
+const produto = PRODUTOS[pg.metadata.produto];
 
-if (entregues[pg.id]) return;
+const user = await client.users.fetch(userId);
 
-if (pg.status === "approved") {
-
-const userId = pg.metadata?.user_id;
-const produtoId = pg.metadata?.produto;
-
-if (!userId || !produtoId) return;
-
-const user = await client.users.fetch(userId).catch(()=>null);
-if (!user) return;
-
-const produto = PRODUTOS[produtoId];
-
-let entrega = produto.tipo === "auto"
+let entrega = produto.tipo==="auto"
 ? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
 : produto.link;
 
-entregues[pg.id] = true;
+db.entregues[pg.id]=true;
 
-vendas[user.id] = (vendas[user.id]||0)+1;
-dinheiro[user.id] = (dinheiro[user.id]||0)+produto.preco;
+db.historico.push({
+id:pg.id,
+user:userId,
+valor:produto.preco,
+entrega,
+timestamp:Date.now(),
+data:new Date().toLocaleDateString()
+});
 
 salvar();
 
-await user.send(`✅ Pagamento aprovado!\n\n${entrega}`).catch(()=>{});
+await user.send(`✅ Compra aprovada!\n${entrega}`);
 
 const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra: <@${user.id}> - ${produto.nome}`);
+logs.send(`💰 ${user.username} comprou ${produto.nome}`);
 
 const recentes = await client.channels.fetch(CANAL_RECENTES);
-recentes.send(`🛒 <@${user.id}> comprou ${produto.nome}`);
+recentes.send(`🛒 ${user.username} comprou ${produto.nome}`);
 
 }
 
-} catch (err) {
-console.log("ERRO WEBHOOK:", err);
-}
-
-}, 100);
+}catch(e){console.log(e);}
+},100);
 
 });
 
-// PORTA CERTA (SEM BUG)
+// PORTA
 const PORT = process.env.PORT;
-
-app.listen(PORT, () => {
-console.log("🔥 Webhook rodando na porta " + PORT);
-});
+app.listen(PORT,()=>console.log("🔥 Webhook rodando"));
 
 client.login(TOKEN);
