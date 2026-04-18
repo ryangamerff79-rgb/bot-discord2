@@ -42,6 +42,7 @@ let db = {
 entregues: {},
 tickets: {},
 pix: {},
+pagamentos: {},
 vendas: {},
 dinheiro: {},
 feedbacks: []
@@ -87,11 +88,10 @@ await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
 console.log("✅ Slash registrados");
 });
 
-// GERAR PIX 3x
+// GERAR PIX (3 tentativas)
 async function gerarPix(produtoId, userId) {
 for (let i = 1; i <= 3; i++) {
 try {
-
 console.log("🔁 Tentativa", i);
 
 const pg = await payment.create({
@@ -104,10 +104,7 @@ metadata: { user_id: userId, produto: produtoId }
 }
 });
 
-if (pg?.point_of_interaction?.transaction_data) {
-console.log("✅ PIX OK");
-return pg;
-}
+if (pg?.point_of_interaction?.transaction_data) return pg;
 
 } catch (err) {
 console.log("❌ ERRO MP:", err.message);
@@ -121,19 +118,18 @@ client.on("interactionCreate", async interaction => {
 try {
 
 if (interaction.isChatInputCommand()) {
-
 if (interaction.commandName === "painel") {
 
 let total = Object.values(db.vendas).reduce((a,b)=>a+b,0);
 
 return interaction.reply({
-content: `🚀 DIDDY STORE\n💰 ${total} vendas realizadas`,
+content: `🚀 DIDDY STORE\n💰 ${total} vendas`,
 components: [
 new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId("opt5").setLabel("R$5").setStyle(ButtonStyle.Primary),
 new ButtonBuilder().setCustomId("opt10").setLabel("R$10").setStyle(ButtonStyle.Success),
 new ButtonBuilder().setCustomId("opt20").setLabel("R$20").setStyle(ButtonStyle.Danger),
-new ButtonBuilder().setCustomId("gta").setLabel("GTA V").setStyle(ButtonStyle.Secondary),
+new ButtonBuilder().setCustomId("gta").setLabel("GTA").setStyle(ButtonStyle.Secondary),
 new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.Secondary)
 )
 ]
@@ -149,7 +145,7 @@ return interaction.reply({ content: db.pix[id], ephemeral: true });
 }
 
 if (db.tickets[interaction.user.id]) {
-return interaction.reply({ content: "❌ Você já tem um pagamento aberto!", ephemeral: true });
+return interaction.reply({ content: "❌ Já tem pagamento aberto!", ephemeral: true });
 }
 
 const produtoId = interaction.customId;
@@ -158,15 +154,17 @@ if (!PRODUTOS[produtoId]) return;
 await interaction.reply({ content: "⏳ Gerando pagamento...", ephemeral: true });
 
 const pg = await gerarPix(produtoId, interaction.user.id);
-
-if (!pg) {
-return interaction.editReply({ content: "❌ Falha ao gerar PIX" });
-}
+if (!pg) return interaction.editReply({ content: "❌ Falha ao gerar PIX" });
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
 const pixId = Date.now().toString();
 
 db.pix[pixId] = pix;
+db.pagamentos[pixId] = {
+user: interaction.user.id,
+produto: produtoId,
+status: "pending"
+};
 salvar();
 
 const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
@@ -204,6 +202,15 @@ components: [row]
 });
 
 interaction.editReply({ content: `✅ Ticket criado: ${canal}` });
+
+// ⏳ EXPIRA EM 10 MIN
+setTimeout(async () => {
+if (db.tickets[interaction.user.id]) {
+delete db.tickets[interaction.user.id];
+salvar();
+canal.delete().catch(()=>{});
+}
+}, 600000);
 }
 
 } catch (err) {
@@ -211,7 +218,7 @@ console.log("❌ ERRO INTERACTION:", err);
 }
 });
 
-// WEBHOOK
+// WEBHOOK (ANTI-CHARGEBACK + ENTREGA)
 app.post("/webhook", (req, res) => {
 res.sendStatus(200);
 
@@ -222,13 +229,16 @@ const id = req.body?.data?.id;
 if (!id) return;
 
 const pg = await payment.get({ id });
-if (!pg || db.entregues[id]) return;
+if (!pg) return;
 
-if (pg.status === "approved") {
+// ANTI DUPLICAÇÃO
+if (db.entregues[id]) return;
+
+// SÓ ENTREGA SE APROVADO
+if (pg.status !== "approved") return;
 
 const userId = pg.metadata?.user_id;
 const produtoId = pg.metadata?.produto;
-
 const produto = PRODUTOS[produtoId];
 if (!produto) return;
 
@@ -249,12 +259,21 @@ db.dinheiro[user.id] = (db.dinheiro[user.id]||0)+produto.preco;
 
 salvar();
 
+// FECHAR TICKET
+try {
+const canalId = db.tickets[user.id];
+if (canalId) {
+const canal = await client.channels.fetch(canalId);
+canal.delete().catch(()=>{});
+}
+} catch {}
+
 // DM
 await user.send(
 `✅ Pagamento aprovado!
 
 📦 Produto: ${produto.nome}
-💰 Valor: R$${produto.preco}
+💰 R$${produto.preco}
 
 🔗 Entrega:
 ${entrega}
@@ -266,17 +285,15 @@ comentario: muito bom`
 
 // LOGS
 const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}\n💰 R$${produto.preco}`);
+logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}`);
 
-// RECENTES (AGORA CORRIGIDO)
+// RECENTES
 const recentes = await client.channels.fetch(CANAL_RECENTES);
 recentes.send(`🛒 NOVA COMPRA\n👤 <@${user.id}>\n📦 ${produto.nome}\n💰 R$${produto.preco}`);
 
 // RANK
 const rank = await client.channels.fetch(CANAL_RANK);
-rank.send(`🏆 Compra registrada\n👤 <@${user.id}>`);
-
-}
+rank.send(`🏆 <@${user.id}> comprou ${produto.nome}`);
 
 } catch (err) {
 console.log("❌ ERRO WEBHOOK:", err);
@@ -286,9 +303,7 @@ console.log("❌ ERRO WEBHOOK:", err);
 
 // FEEDBACK
 client.on("messageCreate", async msg => {
-
 if (msg.channel.type !== 1) return;
-if (!msg.content.includes("nota:")) return;
 
 const nota = Number(msg.content.match(/nota:\s*(\d+)/i)?.[1]);
 const comentario = msg.content.match(/comentario:\s*(.+)/i)?.[1];
@@ -299,14 +314,7 @@ db.feedbacks.push({ user: msg.author.id, nota, comentario });
 salvar();
 
 const canal = await client.channels.fetch(CANAL_FEEDBACK);
-
-canal.send(
-`⭐ NOVO FEEDBACK
-
-👤 <@${msg.author.id}>
-📊 Nota: ${nota}
-💬 ${comentario}`
-);
+canal.send(`⭐ Feedback\n👤 <@${msg.author.id}>\nNota: ${nota}\n${comentario}`);
 
 msg.reply("✅ Avaliação enviada!");
 });
