@@ -21,6 +21,7 @@ app.use(express.json());
 const client = new Client({
 intents: [
 GatewayIntentBits.Guilds,
+GatewayIntentBits.GuildMembers,
 GatewayIntentBits.DirectMessages,
 GatewayIntentBits.MessageContent
 ]
@@ -36,13 +37,13 @@ const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
 const CANAL_FEEDBACK = "1467351899497041942";
 const CANAL_RANK = "1490184769831698655";
+const CARGO_CLIENTE = "1494143094327742594"; // 👈 SEU CARGO
 
 // BANCO
 let db = {
 entregues: {},
 tickets: {},
 pix: {},
-pagamentos: {},
 vendas: {},
 dinheiro: {},
 feedbacks: []
@@ -92,8 +93,6 @@ console.log("✅ Slash registrados");
 async function gerarPix(produtoId, userId) {
 for (let i = 1; i <= 3; i++) {
 try {
-console.log("🔁 Tentativa", i);
-
 const pg = await payment.create({
 body: {
 transaction_amount: Number(PRODUTOS[produtoId].preco),
@@ -160,11 +159,6 @@ const pix = pg.point_of_interaction.transaction_data.qr_code;
 const pixId = Date.now().toString();
 
 db.pix[pixId] = pix;
-db.pagamentos[pixId] = {
-user: interaction.user.id,
-produto: produtoId,
-status: "pending"
-};
 salvar();
 
 const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
@@ -203,7 +197,7 @@ components: [row]
 
 interaction.editReply({ content: `✅ Ticket criado: ${canal}` });
 
-// ⏳ EXPIRA EM 10 MIN
+// FECHAR EM 10 MIN
 setTimeout(async () => {
 if (db.tickets[interaction.user.id]) {
 delete db.tickets[interaction.user.id];
@@ -218,7 +212,7 @@ console.log("❌ ERRO INTERACTION:", err);
 }
 });
 
-// WEBHOOK (ANTI-CHARGEBACK + ENTREGA)
+// WEBHOOK
 app.post("/webhook", (req, res) => {
 res.sendStatus(200);
 
@@ -229,21 +223,13 @@ const id = req.body?.data?.id;
 if (!id) return;
 
 const pg = await payment.get({ id });
-if (!pg) return;
-
-// ANTI DUPLICAÇÃO
-if (db.entregues[id]) return;
-
-// SÓ ENTREGA SE APROVADO
+if (!pg || db.entregues[id]) return;
 if (pg.status !== "approved") return;
 
 const userId = pg.metadata?.user_id;
 const produtoId = pg.metadata?.produto;
 const produto = PRODUTOS[produtoId];
 if (!produto) return;
-
-const user = await client.users.fetch(userId).catch(()=>null);
-if (!user) return;
 
 // ENTREGA
 let entrega = produto.tipo === "auto"
@@ -252,23 +238,16 @@ let entrega = produto.tipo === "auto"
 
 // SALVAR
 db.entregues[id] = true;
-delete db.tickets[user.id];
+delete db.tickets[userId];
 
-db.vendas[user.id] = (db.vendas[user.id]||0)+1;
-db.dinheiro[user.id] = (db.dinheiro[user.id]||0)+produto.preco;
+db.vendas[userId] = (db.vendas[userId]||0)+1;
+db.dinheiro[userId] = (db.dinheiro[userId]||0)+produto.preco;
 
 salvar();
 
-// FECHAR TICKET
-try {
-const canalId = db.tickets[user.id];
-if (canalId) {
-const canal = await client.channels.fetch(canalId);
-canal.delete().catch(()=>{});
-}
-} catch {}
-
 // DM
+const user = await client.users.fetch(userId).catch(()=>null);
+if (user) {
 await user.send(
 `✅ Pagamento aprovado!
 
@@ -278,22 +257,34 @@ await user.send(
 🔗 Entrega:
 ${entrega}
 
-⭐ Avalie:
+⭐ Envie:
 nota: 1000
-comentario: muito bom`
+comentario: exemplo`
 ).catch(()=>{});
+}
+
+// DAR CARGO
+try {
+const guilds = client.guilds.cache;
+guilds.forEach(async (guild) => {
+const member = await guild.members.fetch(userId).catch(()=>null);
+if (member) {
+await member.roles.add(CARGO_CLIENTE).catch(()=>{});
+}
+});
+} catch {}
 
 // LOGS
 const logs = await client.channels.fetch(CANAL_LOGS);
-logs.send(`💰 Compra confirmada\n👤 <@${user.id}>\n📦 ${produto.nome}`);
+logs.send(`💰 Compra confirmada\n👤 <@${userId}>\n📦 ${produto.nome}`);
 
 // RECENTES
 const recentes = await client.channels.fetch(CANAL_RECENTES);
-recentes.send(`🛒 NOVA COMPRA\n👤 <@${user.id}>\n📦 ${produto.nome}\n💰 R$${produto.preco}`);
+recentes.send(`🛒 NOVA COMPRA\n👤 <@${userId}>\n📦 ${produto.nome}\n💰 R$${produto.preco}`);
 
 // RANK
 const rank = await client.channels.fetch(CANAL_RANK);
-rank.send(`🏆 <@${user.id}> comprou ${produto.nome}`);
+rank.send(`🏆 <@${userId}> comprou ${produto.nome}`);
 
 } catch (err) {
 console.log("❌ ERRO WEBHOOK:", err);
