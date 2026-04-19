@@ -33,9 +33,7 @@ const MP_TOKEN = process.env.MP_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
 const GUILD_ID = process.env.GUILD_ID;
 
-// CANAIS
 const CATEGORIA_ID = "1466619720487800845";
-const CANAL_LOGS = "1488589113954271282";
 const CANAL_RECENTES = "1494137996612472943";
 const CANAL_RANK = "1490184769831698655";
 
@@ -44,10 +42,7 @@ const CARGO_CLIENTE = "1494143094327742594";
 
 // BANCO
 let db = { tickets:{}, pix:{}, vendas:{}, dinheiro:{}, entregues:{} };
-
-if (fs.existsSync("dados.json")) {
-db = JSON.parse(fs.readFileSync("dados.json"));
-}
+if (fs.existsSync("dados.json")) db = JSON.parse(fs.readFileSync("dados.json"));
 
 function salvar() {
 fs.writeFileSync("dados.json", JSON.stringify(db, null, 2));
@@ -78,12 +73,12 @@ const CONTAS_GTA = [
 // COMANDOS
 const commands = [
 new SlashCommandBuilder().setName("painel").setDescription("Abrir loja"),
-new SlashCommandBuilder().setName("lucromes").setDescription("Ver lucro mês"),
-new SlashCommandBuilder().setName("ranking").setDescription("Ver ranking"),
+new SlashCommandBuilder().setName("lucromes").setDescription("Ver lucro do mês"),
+new SlashCommandBuilder().setName("ranking").setDescription("Top compradores"),
 
 new SlashCommandBuilder()
 .setName("anunciar")
-.setDescription("Anunciar")
+.setDescription("Anunciar mensagem")
 .addStringOption(o=>o.setName("msg").setDescription("Mensagem").setRequired(true)),
 
 new SlashCommandBuilder()
@@ -96,7 +91,7 @@ new SlashCommandBuilder().setName("fechar").setDescription("Fechar ticket")
 ].map(c=>c.toJSON());
 
 client.once("ready", async ()=>{
-console.log("✅ ONLINE");
+console.log("✅ BOT ONLINE");
 
 const rest = new REST({version:"10"}).setToken(TOKEN);
 
@@ -105,10 +100,10 @@ Routes.applicationGuildCommands(CLIENT_ID, GUILD_ID),
 { body: commands }
 );
 
-console.log("✅ COMANDOS INSTANTÂNEOS");
+console.log("✅ COMANDOS PRONTOS");
 });
 
-// PIX
+// GERAR PIX
 async function gerarPix(produtoId,userId){
 for(let i=0;i<3;i++){
 try{
@@ -127,20 +122,19 @@ if(pg?.point_of_interaction?.transaction_data) return pg;
 return null;
 }
 
-// INTERAÇÕES
+// INTERAÇÃO
 client.on("interactionCreate", async i=>{
 try{
 
-// COMANDOS
 if(i.isChatInputCommand()){
 
 if(i.commandName!=="painel" && !i.member.roles.cache.has(CARGO_PERMISSAO))
 return i.reply({content:"❌ Sem permissão",ephemeral:true});
 
-// painel
+// PAINEL
 if(i.commandName==="painel"){
 return i.reply({
-content:"🛒 Loja",
+content:"🛒 DIDDY STORE",
 components:[new ActionRowBuilder().addComponents(
 new ButtonBuilder().setCustomId("opt5").setLabel("R$5").setStyle(ButtonStyle.Primary),
 new ButtonBuilder().setCustomId("opt10").setLabel("R$10").setStyle(ButtonStyle.Success),
@@ -151,33 +145,32 @@ new ButtonBuilder().setCustomId("sensi").setLabel("Pack").setStyle(ButtonStyle.S
 });
 }
 
-// lucro
+// LUCRO
 if(i.commandName==="lucromes"){
 let total = Object.values(db.dinheiro).reduce((a,b)=>a+b,0);
 return i.reply(`💰 R$${total}`);
 }
 
-// ranking
+// RANK
 if(i.commandName==="ranking"){
 let r = Object.entries(db.vendas)
 .sort((a,b)=>b[1]-a[1])
-.map((x,i)=>`#${i+1} <@${x[0]}> - ${x[1]}`)
+.map((x,i)=>`TOP ${i+1}: <@${x[0]}> - ${x[1]} compras`)
 .join("\n");
+
 return i.reply(r||"Sem dados");
 }
 
-// anunciar
+// ANUNCIAR
 if(i.commandName==="anunciar"){
-const msg = i.options.getString("msg");
-i.channel.send(`📢 ${msg}`);
+i.channel.send(`📢 ${i.options.getString("msg")}`);
 return i.reply({content:"✅ enviado",ephemeral:true});
 }
 
-// reenviar
+// REENVIAR
 if(i.commandName==="reenviar"){
 const user = i.options.getUser("user");
 const produto = PRODUTOS[i.options.getString("produto")];
-if(!produto) return i.reply("erro");
 
 let entrega = produto.tipo==="auto"
 ? CONTAS_GTA[Math.floor(Math.random()*CONTAS_GTA.length)]
@@ -187,7 +180,7 @@ user.send(entrega).catch(()=>{});
 return i.reply("✅ enviado");
 }
 
-// fechar
+// FECHAR
 if(i.commandName==="fechar"){
 i.channel.delete().catch(()=>{});
 }
@@ -197,21 +190,16 @@ i.channel.delete().catch(()=>{});
 // BOTÕES
 if(i.isButton()){
 
-if(i.customId.startsWith("copiar_")){
-const id = i.customId.split("_")[1];
-return i.reply({content:db.pix[id],ephemeral:true});
-}
-
 const produtoId = i.customId;
 if(!PRODUTOS[produtoId]) return;
 
 const pg = await gerarPix(produtoId,i.user.id);
-if(!pg) return i.reply("erro pix");
+if(!pg) return i.reply("❌ erro pix");
 
 const pix = pg.point_of_interaction.transaction_data.qr_code;
-const id = Date.now();
+const pixId = Date.now();
 
-db.pix[id]=pix;
+db.pix[pixId]=pix;
 salvar();
 
 const qr = `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
@@ -226,17 +214,26 @@ db.tickets[i.user.id]=canal.id;
 salvar();
 
 const embed = new EmbedBuilder()
-.setTitle("PIX")
-.setDescription(`\`\`\`\n${pix}\n\`\`\``)
+.setTitle("💳 PAGAMENTO PIX")
+.setDescription(`\`\`\`\n${pix}\n\`\`\`\n⚠️ expira em 2 minutos`)
 .setImage(qr);
 
 const row = new ActionRowBuilder().addComponents(
-new ButtonBuilder().setCustomId(`copiar_${id}`).setLabel("Copiar").setStyle(ButtonStyle.Primary)
+new ButtonBuilder().setCustomId(`copiar_${pixId}`).setLabel("Copiar PIX").setStyle(ButtonStyle.Primary)
 );
 
 canal.send({content:`<@${i.user.id}>`,embeds:[embed],components:[row]});
+i.reply({content:`✅ Ticket criado: ${canal}`,ephemeral:true});
 
-i.reply({content:`ticket criado ${canal}`,ephemeral:true});
+// expira
+setTimeout(()=>{
+if(db.tickets[i.user.id]){
+delete db.tickets[i.user.id];
+salvar();
+canal.delete().catch(()=>{});
+}
+},120000);
+
 }
 
 }catch(e){console.log(e)}
@@ -267,20 +264,29 @@ db.vendas[user.id]=(db.vendas[user.id]||0)+1;
 db.dinheiro[user.id]=(db.dinheiro[user.id]||0)+produto.preco;
 salvar();
 
-await user.send(`✅ ${entrega}`).catch(()=>{});
+// entrega
+await user.send(`✅ Compra aprovada\n\n${entrega}`).catch(()=>{});
 
 // cargo
 const guild = client.guilds.cache.get(GUILD_ID);
-const m = await guild.members.fetch(user.id);
-m.roles.add(CARGO_CLIENTE).catch(()=>{});
+const membro = await guild.members.fetch(user.id);
+membro.roles.add(CARGO_CLIENTE).catch(()=>{});
 
-// logs
-client.channels.fetch(CANAL_RECENTES).then(c=>c.send(`🛒 <@${user.id}> comprou ${produto.nome}`));
+// recentes
+client.channels.fetch(CANAL_RECENTES)
+.then(c=>c.send(`🛒 <@${user.id}> comprou ${produto.nome} - R$${produto.preco}`));
+
+// rank atualizado
+const rank = Object.entries(db.vendas)
+.sort((a,b)=>b[1]-a[1])
+.map((x,i)=>`TOP ${i+1}: <@${x[0]}> - ${x[1]}`)
+.join("\n");
+
+client.channels.fetch(CANAL_RANK).then(c=>c.send(rank));
 
 }catch(e){console.log(e)}
 },100);
 });
 
-app.listen(process.env.PORT||3000,()=>console.log("🔥 webhook"));
-
+app.listen(process.env.PORT||3000,()=>console.log("🔥 WEBHOOK ON"));
 client.login(TOKEN);
