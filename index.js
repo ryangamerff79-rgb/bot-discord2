@@ -1,5 +1,5 @@
-// index.js FULL para GitHub/Railway
-// pronto para substituir o antigo
+// index.js COMPLETO pronto para GitHub / Railway
+// substitua TODO seu index.js por este arquivo
 
 const {
   Client,
@@ -30,6 +30,7 @@ const client = new Client({
   ]
 });
 
+// ================= CONFIG =================
 const TOKEN = process.env.TOKEN;
 const MP_TOKEN = process.env.MP_TOKEN;
 const CLIENT_ID = process.env.CLIENT_ID;
@@ -42,6 +43,7 @@ const CARGO_CLIENTE = "1494143094327742594";
 
 const IMG = "https://cdn.discordapp.com/attachments/1373392385014370334/1497072312413851790/1294723.webp";
 
+// ================= DB =================
 let db = {
   tickets: {},
   pix: {},
@@ -60,6 +62,7 @@ function salvar() {
   fs.writeFileSync("dados.json", JSON.stringify(db, null, 2));
 }
 
+// ================= PRODUTOS =================
 const PRODUTOS = {
   opt5: {
     nome: "Otimização Básica",
@@ -95,26 +98,54 @@ const CONTAS_GTA = [
   "halotic21:Ddjac210392"
 ];
 
-const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
-const payment = new Payment(mp);
-
 function contaRandom() {
   return CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
 }
 
+// ================= MP =================
+const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
+const payment = new Payment(mp);
+
+async function gerarPix(produtoId, userId) {
+  try {
+    const produto = PRODUTOS[produtoId];
+
+    return await payment.create({
+      body: {
+        transaction_amount: Number(produto.preco),
+        description: produto.nome,
+        payment_method_id: "pix",
+        payer: {
+          email: `user${userId}@gmail.com`
+        },
+        metadata: {
+          user_id: userId,
+          produto: produtoId
+        }
+      }
+    });
+  } catch {
+    return null;
+  }
+}
+
+// ================= COMMANDS =================
 const commands = [
   new SlashCommandBuilder().setName("painel").setDescription("Abrir loja"),
   new SlashCommandBuilder().setName("rank").setDescription("Ver ranking"),
-  new SlashCommandBuilder().setName("fechar").setDescription("Fechar ticket atual")
-].map(c => c.toJSON());
+  new SlashCommandBuilder().setName("fechar").setDescription("Fechar ticket")
+].map(cmd => cmd.toJSON());
 
 client.once("ready", async () => {
+  console.log("BOT ONLINE");
+
   const rest = new REST({ version: "10" }).setToken(TOKEN);
   await rest.put(Routes.applicationCommands(CLIENT_ID), { body: commands });
-  console.log("BOT ONLINE");
 });
 
+// ================= WEB =================
 app.get("/", (_, res) => res.send("online"));
 app.listen(process.env.PORT || 3000);
 
+// ================= LOGIN =================
 client.login(TOKEN);
