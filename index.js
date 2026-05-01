@@ -118,10 +118,3 @@ app.get("/", (_, res) => res.send("online"));
 app.listen(process.env.PORT || 3000);
 
 client.login(TOKEN);
-
-// OBS:
-// este arquivo já está estruturado para GitHub/Railway.
-// se seu package.json estiver correto e as ENV estiverem certas,
-// ele sobe normalmente.
-// o restante da lógica (webhook + entrega + rank + ticket)
-// permanece na mesma estrutura que você já usa no seu bot atual.
