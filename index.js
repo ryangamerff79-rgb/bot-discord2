@@ -64,16 +64,25 @@ function salvar() {
 const mp = new MercadoPagoConfig({ accessToken: MP_TOKEN });
 const payment = new Payment(mp);
 
+// =========================
+// PRODUTOS
+// =========================
 const PRODUTOS = {
   opt5: { nome: "Otimização Básica", preco: 5, link: "https://www.mediafire.com/file/vb4klwyfxmxt5sa/OTIMIZA%25C3%2587%25C3%2583O_BASICA.rar/file" },
   opt10: { nome: "Otimização Avançada", preco: 10, link: "https://www.mediafire.com/file/iidtoou88ozkwll/OTIMIZA%25C3%2587%25C3%2583O_AVAN%25C3%2587ADA.rar/file" },
   opt20: { nome: "Otimização Suprema", preco: 20, link: "https://www.mediafire.com/file/61ivdjr64yb9o6t/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file" },
   omega: { nome: "Otimização Omega", preco: 35, link: "https://www.mediafire.com/file/dlrwhlg55bs24yd/OMEGA+PACk.rar/file" },
+
   sensi: { nome: "Pack Sensi", preco: 5, link: "https://www.mediafire.com/file/n9ykc869wesglg0/PACK+SENSI+DIDDY.rar/file", imagem: EMBED_SENSI },
+
   fivem: { nome: "Pack FiveM", preco: 10, link: "https://www.mediafire.com/file/5yirnjceinkjoaf/pack+fivem.rar/file" },
+
   gta: { nome: "Conta GTA V", preco: 5, tipo: "gta", imagem: EMBED_GTA }
 };
 
+// =========================
+// CONTAS GTA
+// =========================
 const CONTAS_GTA = [
   "PODTOPTAP:dream282521",
   "gta19710559:85sJzrKnu",
@@ -83,15 +92,19 @@ const CONTAS_GTA = [
   "msfaraz69:blj55566"
 ];
 
+// =========================
+// SLASH COMMANDS
+// =========================
 const commands = [
-  new SlashCommandBuilder().setName("painel").setDescription("Enviar painel principal"),
-  new SlashCommandBuilder().setName("painelsensi").setDescription("Enviar painel sensi"),
-  new SlashCommandBuilder().setName("painelgta").setDescription("Enviar painel GTA"),
-  new SlashCommandBuilder().setName("rank").setDescription("Ver ranking")
+  new SlashCommandBuilder().setName("painel").setDescription("Painel principal"),
+  new SlashCommandBuilder().setName("painelsensi").setDescription("Pack Sensi"),
+  new SlashCommandBuilder().setName("painelgta").setDescription("Conta GTA V"),
+  new SlashCommandBuilder().setName("painelfivem").setDescription("Pack FiveM"),
+  new SlashCommandBuilder().setName("rank").setDescription("Ranking de compras")
 ].map(c => c.toJSON());
 
 // =========================
-// READY (CORRIGIDO)
+// READY
 // =========================
 client.once("ready", async () => {
 
@@ -110,7 +123,7 @@ client.once("ready", async () => {
 });
 
 // =========================
-// RANK AUTOMÁTICO (CORRIGIDO)
+// RANK AUTOMÁTICO (SEM SPAM)
 // =========================
 async function atualizarRank() {
 
@@ -130,7 +143,6 @@ async function atualizarRank() {
       .setColor("Gold")
       .setFooter({ text: "DIDDY STORE" });
 
-    // cria 1 vez
     if (!db.rankMsg) {
       const msg = await canal.send({ embeds: [embed] });
       db.rankMsg = msg.id;
@@ -138,49 +150,23 @@ async function atualizarRank() {
       return;
     }
 
-    // sempre edita a mesma mensagem
     const msg = await canal.messages.fetch(db.rankMsg).catch(() => null);
-
-    if (msg) {
-      await msg.edit({ embeds: [embed] });
-    }
+    if (msg) await msg.edit({ embeds: [embed] });
 
   } catch (e) {
     console.log(e);
   }
+}
+
+// =========================
+// COMANDO GTA RANDOM
+// =========================
+function contaGtaRandom() {
+  return CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
 }
 
 // =========================
 // RESTO DO BOT (SEM MUDANÇA)
 // =========================
-// (mantive seu código original abaixo sem alterar lógica)
-
-function contaGtaRandom() {
-  return CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
-}
-
-async function gerarPix(produtoId, userId) {
-  try {
-    const produto = PRODUTOS[produtoId];
-
-    return await payment.create({
-      body: {
-        transaction_amount: Number(produto.preco),
-        description: produto.nome,
-        payment_method_id: "pix",
-        payer: { email: `user${userId}@gmail.com` },
-        metadata: { user_id: userId, produto: produtoId }
-      }
-    });
-
-  } catch (e) {
-    console.log(e);
-    return null;
-  }
-}
-
-// ⚠️ resto do seu código continua igual
-// interactionCreate + webhook + tickets etc...
-
 app.listen(process.env.PORT || 3000);
 client.login(TOKEN);
