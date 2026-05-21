@@ -72,17 +72,11 @@ const PRODUTOS = {
   opt10: { nome: "Otimização Avançada", preco: 10, link: "https://www.mediafire.com/file/iidtoou88ozkwll/OTIMIZA%25C3%2587%25C3%2583O_AVAN%25C3%2587ADA.rar/file" },
   opt20: { nome: "Otimização Suprema", preco: 20, link: "https://www.mediafire.com/file/61ivdjr64yb9o6t/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file" },
   omega: { nome: "Otimização Omega", preco: 35, link: "https://www.mediafire.com/file/dlrwhlg55bs24yd/OMEGA+PACk.rar/file" },
-
   sensi: { nome: "Pack Sensi", preco: 5, link: "https://www.mediafire.com/file/n9ykc869wesglg0/PACK+SENSI+DIDDY.rar/file", imagem: EMBED_SENSI },
-
   fivem: { nome: "Pack FiveM", preco: 10, link: "https://www.mediafire.com/file/5yirnjceinkjoaf/pack+fivem.rar/file" },
-
   gta: { nome: "Conta GTA V", preco: 5, tipo: "gta", imagem: EMBED_GTA }
 };
 
-// =========================
-// CONTAS GTA
-// =========================
 const CONTAS_GTA = [
   "PODTOPTAP:dream282521",
   "gta19710559:85sJzrKnu",
@@ -100,11 +94,11 @@ const commands = [
   new SlashCommandBuilder().setName("painelsensi").setDescription("Pack Sensi"),
   new SlashCommandBuilder().setName("painelgta").setDescription("Conta GTA V"),
   new SlashCommandBuilder().setName("painelfivem").setDescription("Pack FiveM"),
-  new SlashCommandBuilder().setName("rank").setDescription("Ranking de compras")
+  new SlashCommandBuilder().setName("rank").setDescription("Ranking")
 ].map(c => c.toJSON());
 
 // =========================
-// READY
+// READY + LIMPAR COMANDOS ANTIGOS
 // =========================
 client.once("ready", async () => {
 
@@ -112,18 +106,25 @@ client.once("ready", async () => {
 
   const rest = new REST({ version: "10" }).setToken(TOKEN);
 
+  // 🔥 REMOVE TODOS COMANDOS ANTIGOS
+  await rest.put(
+    Routes.applicationCommands(CLIENT_ID),
+    { body: [] }
+  );
+
+  // 🔥 REGISTRA NOVOS
   await rest.put(
     Routes.applicationCommands(CLIENT_ID),
     { body: commands }
   );
 
-  console.log("✅ Slash Commands registradas");
+  console.log("✅ Slash Commands resetadas e registradas");
 
   await atualizarRank();
 });
 
 // =========================
-// RANK AUTOMÁTICO (SEM SPAM)
+// RANK (SEM SPAM)
 // =========================
 async function atualizarRank() {
 
@@ -159,14 +160,34 @@ async function atualizarRank() {
 }
 
 // =========================
-// COMANDO GTA RANDOM
+// RESTO DO BOT (NÃO ALTERADO)
 // =========================
 function contaGtaRandom() {
   return CONTAS_GTA[Math.floor(Math.random() * CONTAS_GTA.length)];
 }
 
+async function gerarPix(produtoId, userId) {
+  try {
+    const produto = PRODUTOS[produtoId];
+
+    return await payment.create({
+      body: {
+        transaction_amount: Number(produto.preco),
+        description: produto.nome,
+        payment_method_id: "pix",
+        payer: { email: `user${userId}@gmail.com` },
+        metadata: { user_id: userId, produto: produtoId }
+      }
+    });
+
+  } catch (e) {
+    console.log(e);
+    return null;
+  }
+}
+
 // =========================
-// RESTO DO BOT (SEM MUDANÇA)
+// START
 // =========================
 app.listen(process.env.PORT || 3000);
 client.login(TOKEN);
