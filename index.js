@@ -76,7 +76,7 @@ const PRODUTOS = {
   opt5: { nome: "Otimização Básica", preco: 5, link: "https://www.mediafire.com/file/vb4klwyfxmxt5sa/OTIMIZA.rar" },
   opt10: { nome: "Otimização Avançada", preco: 10, link: "https://www.mediafire.com/file/iidtoou88ozkwll/OTIMIZA2.rar" },
   opt20: { nome: "Otimização Suprema", preco: 20, link: "https://www.mediafire.com/file/61ivdjr64yb9o6t/OTIMIZA3.rar" },
-  omega: { nome: "Otimização Omega", preco: 35, link: "https://www.mediafire.com/file/dlrwhlg55bs24yd/OMEGA.rar" },
+  omega: { nome: "Otimização Omega", preco: 35, link: "https://www.mediafire.com/file/5mambx2ewnpy3jl/OMEGA+PACk.rar/file" },
 
   sensi: {
     nome: "Pack Sensi",
