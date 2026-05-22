@@ -5,6 +5,7 @@ const {
   ActionRowBuilder,
   ButtonStyle,
   PermissionsBitField,
+  ChannelType,
   EmbedBuilder,
   REST,
   Routes,
@@ -40,7 +41,9 @@ const CARGO_CLIENTE = "1494143094327742594";
 const IMG = "https://cdn.discordapp.com/attachments/1373392385014370334/1497072312413851790/1294723.webp";
 
 const EMBED_PAINEL = "https://cdn.discordapp.com/attachments/1504981948106408182/1506132172321460294/8a0b88a4-3ee0-442f-ad5f-760341da1179.png";
+
 const EMBED_SENSI = "https://cdn.discordapp.com/attachments/1504981948106408182/1506141414252089484/content.png";
+
 const EMBED_GTA = "https://cdn.discordapp.com/attachments/1504981948106408182/1506140642089242644/59f6df83-2b8d-4044-87de-3191a5146e6c.png";
 
 let db = {
@@ -67,9 +70,6 @@ const mp = new MercadoPagoConfig({
 
 const payment = new Payment(mp);
 
-// =========================
-// PRODUTOS
-// =========================
 const PRODUTOS = {
 
   opt5: {
@@ -117,9 +117,6 @@ const PRODUTOS = {
   }
 };
 
-// =========================
-// CONTAS GTA
-// =========================
 const CONTAS_GTA = [
   "PODTOPTAP:dream282521",
   "gta19710559:85sJzrKnu",
@@ -129,26 +126,23 @@ const CONTAS_GTA = [
   "msfaraz69:blj55566"
 ];
 
-// =========================
-// COMANDOS
-// =========================
 const commands = [
 
   new SlashCommandBuilder()
     .setName("painel")
-    .setDescription("Painel principal"),
+    .setDescription("Painel otimizações"),
 
   new SlashCommandBuilder()
     .setName("painelsensi")
-    .setDescription("Painel do pack sensi"),
-
-  new SlashCommandBuilder()
-    .setName("painelgta")
-    .setDescription("Painel GTA"),
+    .setDescription("Painel sensi"),
 
   new SlashCommandBuilder()
     .setName("painelfivem")
     .setDescription("Painel FiveM"),
+
+  new SlashCommandBuilder()
+    .setName("painelgta")
+    .setDescription("Painel GTA"),
 
   new SlashCommandBuilder()
     .setName("rank")
@@ -156,45 +150,28 @@ const commands = [
 
 ].map(cmd => cmd.toJSON());
 
-// =========================
-// READY
-// =========================
 client.once("ready", async () => {
 
   console.log("✅ BOT ONLINE");
 
-  const rest = new REST({ version: "10" })
-    .setToken(TOKEN);
+  const rest = new REST({ version: "10" }).setToken(TOKEN);
 
-  // remove antigos
-  await rest.put(
-    Routes.applicationCommands(CLIENT_ID),
-    { body: [] }
-  );
-
-  // registra novos
   await rest.put(
     Routes.applicationCommands(CLIENT_ID),
     { body: commands }
   );
 
-  console.log("✅ Slash Commands registradas");
+  console.log("✅ Slash registrados");
 
   await atualizarRank();
 });
 
-// =========================
-// GTA RANDOM
-// =========================
 function contaGtaRandom() {
   return CONTAS_GTA[
     Math.floor(Math.random() * CONTAS_GTA.length)
   ];
 }
 
-// =========================
-// GERAR PIX
-// =========================
 async function gerarPix(produtoId, userId) {
 
   try {
@@ -219,99 +196,61 @@ async function gerarPix(produtoId, userId) {
     });
 
   } catch (e) {
-    console.log(e);
+    console.log("ERRO PIX:", e);
     return null;
   }
 }
 
-// =========================
-// RANK AUTOMÁTICO
-// =========================
 async function atualizarRank() {
 
   try {
 
-    const canal =
-      await client.channels.fetch(CANAL_RANK);
+    const canal = await client.channels.fetch(CANAL_RANK);
 
     const ranking = Object.entries(db.vendas)
-
       .sort((a, b) => b[1] - a[1])
-
       .slice(0, 10)
-
       .map((x, i) =>
-        `🏆 ${i + 1}. <@${x[0]}> - ${x[1]} compras`
+        `${i + 1}. <@${x[0]}> - ${x[1]} compras`
       )
-
       .join("\n") || "Sem compras ainda";
-
-    const embed = new EmbedBuilder()
-
-      .setTitle("🏆 TOP COMPRADORES")
-
-      .setDescription(ranking)
-
-      .setColor("Gold")
-
-      .setFooter({
-        text: "DIDDY STORE"
-      });
 
     if (!db.rankMsg) {
 
-      const msg = await canal.send({
-        embeds: [embed]
-      });
+      const msg = await canal.send("🏆 Carregando ranking...");
 
       db.rankMsg = msg.id;
-
       salvar();
-
-      return;
     }
 
-    const msg =
-      await canal.messages
-        .fetch(db.rankMsg)
-        .catch(() => null);
+    const msg = await canal.messages.fetch(db.rankMsg);
 
-    if (msg) {
+    await msg.edit(
+`🏆 **TOP COMPRADORES**
 
-      await msg.edit({
-        embeds: [embed]
-      });
-    }
+${ranking}`
+    );
 
   } catch (e) {
-    console.log(e);
+    console.log("ERRO RANK:", e);
   }
 }
 
-// =========================
-// INTERAÇÕES
-// =========================
 client.on("interactionCreate", async (i) => {
 
-  // =========================
-  // SLASH COMMANDS
-  // =========================
   if (i.isChatInputCommand()) {
 
-    // =========================
-    // PAINEL PRINCIPAL
-    // =========================
     if (i.commandName === "painel") {
 
       const embed = new EmbedBuilder()
         .setTitle("🛒 DIDDY STORE")
-        .setDescription(
-`🔥 Loja oficial de otimizações
+        .setDescription(`
+🔥 Loja oficial de otimizações
 
 💻 Melhor desempenho
 ⚡ Mais FPS
-🎯 Menor input delay`
-        )
+🎯 Menor input delay
+        `)
         .setImage(EMBED_PAINEL)
         .setColor("Purple");
 
@@ -340,44 +279,23 @@ client.on("interactionCreate", async (i) => {
             new ButtonBuilder()
               .setCustomId("omega")
               .setLabel("OMEGA")
-              .setStyle(ButtonStyle.Secondary),
-
-            new ButtonBuilder()
-              .setCustomId("fivem")
-              .setLabel("FIVEM")
               .setStyle(ButtonStyle.Secondary)
-          ),
-
-          new ActionRowBuilder().addComponents(
-
-            new ButtonBuilder()
-              .setCustomId("gta")
-              .setLabel("GTA V")
-              .setStyle(ButtonStyle.Danger),
-
-            new ButtonBuilder()
-              .setCustomId("sensi")
-              .setLabel("PACK SENSI")
-              .setStyle(ButtonStyle.Success)
           )
         ]
       });
     }
 
-    // =========================
-    // SENSI
-    // =========================
     if (i.commandName === "painelsensi") {
 
       const embed = new EmbedBuilder()
         .setTitle("🎯 PACK SENSI")
-        .setDescription(
-`🔥 Melhor pack de sensi
+        .setDescription(`
+🎯 Melhor pack de sensibilidade
 
-🎯 Mais precisão
 ⚡ Mais capa
-💀 Mais kills`
-        )
+💀 Mais kills
+🔥 Melhor precisão
+        `)
         .setImage(EMBED_SENSI)
         .setColor("Purple");
 
@@ -396,22 +314,47 @@ client.on("interactionCreate", async (i) => {
       });
     }
 
-    // =========================
-    // GTA
-    // =========================
+    if (i.commandName === "painelfivem") {
+
+      const embed = new EmbedBuilder()
+        .setTitle("🔥 PACK FIVEM")
+        .setDescription(`
+🚀 Melhor pack FiveM
+
+⚡ Mais FPS
+🎯 Mais desempenho
+💀 Gameplay fluida
+        `)
+        .setColor("Orange");
+
+      return i.reply({
+        embeds: [embed],
+
+        components: [
+          new ActionRowBuilder().addComponents(
+
+            new ButtonBuilder()
+              .setCustomId("fivem")
+              .setLabel("COMPRAR")
+              .setStyle(ButtonStyle.Primary)
+          )
+        ]
+      });
+    }
+
     if (i.commandName === "painelgta") {
 
       const embed = new EmbedBuilder()
         .setTitle("🚗 CONTA GTA V")
-        .setDescription(
-`🔥 Conta GTA V completa
+        .setDescription(`
+💸 Conta completa
 
-💸 Dinheiro
-🚘 Veículos
-⭐ Benefícios`
-        )
+🚘 modo historia
+⭐fivem
+🔥 jogabilidade
+        `)
         .setImage(EMBED_GTA)
-        .setColor("Orange");
+        .setColor("Red");
 
       return i.reply({
         embeds: [embed],
@@ -428,40 +371,6 @@ client.on("interactionCreate", async (i) => {
       });
     }
 
-    // =========================
-    // FIVEM
-    // =========================
-    if (i.commandName === "painelfivem") {
-
-      const embed = new EmbedBuilder()
-        .setTitle("🔥 PACK FIVEM")
-        .setDescription(
-`🎯 Melhor pack para FiveM
-
-⚡ FPS Boost
-💻 Melhor desempenho
-🔥 Mais fluidez`
-        )
-        .setColor("Purple");
-
-      return i.reply({
-        embeds: [embed],
-
-        components: [
-          new ActionRowBuilder().addComponents(
-
-            new ButtonBuilder()
-              .setCustomId("fivem")
-              .setLabel("COMPRAR")
-              .setStyle(ButtonStyle.Success)
-          )
-        ]
-      });
-    }
-
-    // =========================
-    // RANK
-    // =========================
     if (i.commandName === "rank") {
 
       const ranking = Object.entries(db.vendas)
@@ -472,98 +381,71 @@ client.on("interactionCreate", async (i) => {
         .join("\n") || "Sem compras";
 
       return i.reply({
-        content: `🏆 Rank\n\n${ranking}`,
+        content: `🏆 RANK\n\n${ranking}`,
         ephemeral: true
       });
     }
   }
 
-  // =========================
-  // BOTÕES
-  // =========================
   if (i.isButton()) {
 
-    const userId = i.user.id;
+    try {
 
-    if (db.blacklist[userId]) {
+      const userId = i.user.id;
 
-      return i.reply({
-        content: "🚫 Usuário bloqueado.",
+      if (db.blacklist[userId]) {
+        return i.reply({
+          content: "🚫 Você está bloqueado.",
+          ephemeral: true
+        });
+      }
+
+      if (db.tickets[userId]) {
+        return i.reply({
+          content: "❌ Você já possui ticket aberto.",
+          ephemeral: true
+        });
+      }
+
+      const produtoId = i.customId;
+
+      if (i.customId.startsWith("copiar_")) {
+
+        const pixId = i.customId.split("_")[1];
+
+        return i.reply({
+          content: db.pix[pixId],
+          ephemeral: true
+        });
+      }
+
+      const produto = PRODUTOS[produtoId];
+
+      if (!produto) return;
+
+      await i.deferReply({
         ephemeral: true
       });
-    }
 
-    const now = Date.now();
+      const pg = await gerarPix(produtoId, userId);
 
-    if (
-      db.cooldown[userId] &&
-      now - db.cooldown[userId] < 3000
-    ) {
+      if (!pg?.point_of_interaction?.transaction_data) {
+        return i.editReply("❌ Erro ao gerar PIX.");
+      }
 
-      return i.reply({
-        content: "⏳ Aguarde alguns segundos.",
-        ephemeral: true
-      });
-    }
+      const pix =
+        pg.point_of_interaction.transaction_data.qr_code;
 
-    db.cooldown[userId] = now;
-    salvar();
+      const pixId = Date.now().toString();
 
-    if (i.customId.startsWith("copiar_")) {
+      db.pix[pixId] = pix;
+      salvar();
 
-      const pixId =
-        i.customId.split("_")[1];
-
-      return i.reply({
-        content:
-          db.pix[pixId] || "PIX não encontrado.",
-        ephemeral: true
-      });
-    }
-
-    if (db.tickets[userId]) {
-
-      return i.reply({
-        content:
-          "❌ Você já possui pagamento aberto.",
-        ephemeral: true
-      });
-    }
-
-    const produtoId = i.customId;
-
-    const produto = PRODUTOS[produtoId];
-
-    if (!produto) return;
-
-    await i.deferReply({ ephemeral: true });
-
-    const pg =
-      await gerarPix(produtoId, userId);
-
-    if (
-      !pg?.point_of_interaction?.transaction_data
-    ) {
-
-      return i.editReply(
-        "❌ Erro ao gerar PIX."
-      );
-    }
-
-    const pix =
-      pg.point_of_interaction
-        .transaction_data.qr_code;
-
-    const pixId =
-      Date.now().toString();
-
-    db.pix[pixId] = pix;
-    salvar();
-
-    const canal =
-      await i.guild.channels.create({
+      const canal = await i.guild.channels.create({
 
         name: `ticket-${i.user.username}`,
+
+        type: ChannelType.GuildText,
 
         parent: CATEGORIA_ID,
 
@@ -571,97 +453,78 @@ client.on("interactionCreate", async (i) => {
 
           {
             id: i.guild.id,
-            deny: [
-              PermissionsBitField.Flags.ViewChannel
-            ]
+            deny: [PermissionsBitField.Flags.ViewChannel]
           },
 
           {
             id: userId,
             allow: [
-              PermissionsBitField.Flags.ViewChannel
+              PermissionsBitField.Flags.ViewChannel,
+              PermissionsBitField.Flags.SendMessages
             ]
           }
         ]
       });
 
-    db.tickets[userId] = canal.id;
-    salvar();
+      db.tickets[userId] = canal.id;
+      salvar();
 
-    const qr =
-      `https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
+      const qr =
+`https://api.qrserver.com/v1/create-qr-code/?size=300x300&data=${encodeURIComponent(pix)}`;
 
-    const embed = new EmbedBuilder()
-      .setTitle("💳 PAGAMENTO PIX")
-      .setDescription(
-`📦 Produto: ${produto.nome}
-💰 Valor: R$${produto.preco}`
-      )
-      .setImage(qr)
-      .setColor("Green")
-      .addFields({
-        name: "PIX copia e cola",
-        value: `\`\`\`${pix.substring(0, 1000)}\`\`\``
+      const embed = new EmbedBuilder()
+
+        .setTitle("💳 PAGAMENTO PIX")
+
+        .setDescription(`
+📦 Produto: ${produto.nome}
+💰 Valor: R$${produto.preco}
+        `)
+
+        .setImage(qr)
+
+        .setColor("Green")
+
+        .addFields({
+          name: "PIX copia e cola",
+          value: `\`\`\`${pix.substring(0, 1000)}\`\`\``
+        });
+
+      await canal.send({
+
+        content:
+`<@${userId}>
+⏰ Pagamento expira em 12 minutos`,
+
+        embeds: [embed],
+
+        components: [
+
+          new ActionRowBuilder().addComponents(
+
+            new ButtonBuilder()
+              .setCustomId(`copiar_${pixId}`)
+              .setLabel("📋 Copiar PIX")
+              .setStyle(ButtonStyle.Primary)
+          )
+        ]
       });
 
-    if (produto.imagem) {
-      embed.setThumbnail(produto.imagem);
-    }
+      await i.editReply(
+        `✅ Ticket criado: ${canal}`
+      );
 
-    await canal.send({
+    } catch (e) {
 
-      content:
-        `<@${userId}> ⏰ Expira em 12 minutos`,
+      console.log("ERRO TICKET:", e);
 
-      embeds: [embed],
-
-      components: [
-
-        new ActionRowBuilder().addComponents(
-
-          new ButtonBuilder()
-            .setCustomId(`copiar_${pixId}`)
-            .setLabel("📋 Copiar PIX")
-            .setStyle(ButtonStyle.Primary)
-        )
-      ]
-    });
-
-    await i.editReply(
-      `✅ Ticket criado: ${canal}`
-    );
-
-    setTimeout(() => {
-
-      canal.send(
-        "⚠️ Seu pagamento expira em 2 minutos."
-      ).catch(() => {});
-
-    }, 600000);
-
-    setTimeout(() => {
-
-      if (db.tickets[userId]) {
-
-        delete db.tickets[userId];
-        salvar();
-
-        canal.send(
-          "❌ Ticket expirado por falta de pagamento."
-        ).catch(() => {});
-
-        setTimeout(() => {
-          canal.delete().catch(() => {});
-        }, 3000);
+      if (i.deferred || i.replied) {
+        i.editReply("❌ Erro ao criar ticket.");
       }
-
-    }, 720000);
+    }
   }
 });
 
-// =========================
-// WEBHOOK
-// =========================
 app.post("/webhook", (req, res) => {
 
   res.sendStatus(200);
@@ -670,37 +533,30 @@ app.post("/webhook", (req, res) => {
 
     try {
 
-      const paymentId =
-        req.body?.data?.id;
+      const paymentId = req.body?.data?.id;
 
       if (
         !paymentId ||
         db.entregues[paymentId]
       ) return;
 
-      const pg =
-        await payment.get({
-          id: paymentId
-        });
+      const pg = await payment.get({
+        id: paymentId
+      });
 
-      if (
-        !pg ||
-        pg.status !== "approved"
-      ) return;
+      if (!pg || pg.status !== "approved")
+        return;
 
-      const userId =
-        pg.metadata?.user_id;
+      const userId = pg.metadata?.user_id;
 
-      const produtoId =
-        pg.metadata?.produto;
+      const produtoId = pg.metadata?.produto;
 
-      const produto =
-        PRODUTOS[produtoId];
+      const produto = PRODUTOS[produtoId];
 
       if (!userId || !produto)
         return;
 
-      let entrega =
+      const entrega =
         produto.tipo === "gta"
           ? contaGtaRandom()
           : produto.link;
@@ -711,7 +567,7 @@ app.post("/webhook", (req, res) => {
       await user.send({
 
         content:
-`🎉 **COMPRA CONFIRMADA**
+`🎉 COMPRA CONFIRMADA
 
 📦 Produto: ${produto.nome}
 💰 Valor: R$${produto.preco}
@@ -747,78 +603,26 @@ ${entrega}`
         } catch {}
       });
 
-      const canalId =
-        db.tickets[userId];
+      const canalId = db.tickets[userId];
 
       if (canalId) {
 
         const canal =
-          await client.channels
-            .fetch(canalId)
+          await client.channels.fetch(canalId)
             .catch(() => null);
 
-        if (canal)
-          await canal.delete()
-            .catch(() => {});
+        if (canal) {
+          await canal.delete().catch(() => {});
+        }
 
         delete db.tickets[userId];
         salvar();
       }
 
-      const recentes =
-        await client.channels
-          .fetch(CANAL_RECENTES)
-          .catch(() => null);
-
-      if (recentes) {
-
-        const embed =
-          new EmbedBuilder()
-
-          .setAuthor({
-            name:
-              "🏆 Compra aprovada com sucesso!"
-          })
-
-          .setDescription(
-`📦 **Produtos adquiridos**
-1x - ${produto.nome}
-
-💰 **Valor pago**
-R$ ${produto.preco},00
-
-✨ **Avaliação**
-⭐⭐⭐⭐⭐ 5 estrelas!`
-          )
-
-          .setImage(IMG)
-
-          .setColor("Green");
-
-        await recentes.send({
-          embeds: [embed]
-        }).catch(() => {});
-      }
-
-      const logs =
-        await client.channels
-          .fetch(CANAL_LOGS)
-          .catch(() => null);
-
-      if (logs) {
-
-        await logs.send(
-          `✅ Compra confirmada | ${userId} | ${produto.nome}`
-        ).catch(() => {});
-      }
-
       await atualizarRank();
 
     } catch (e) {
-      console.log(
-        "ERRO WEBHOOK:",
-        e
-      );
+      console.log("ERRO WEBHOOK:", e);
     }
 
   }, 300);
