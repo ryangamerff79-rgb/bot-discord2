@@ -166,7 +166,7 @@ client.on("interactionCreate", async (i) => {
             .setTitle("🔥 PACK FIVEM")
             .setImage(EMBED_FIVEM)
             .setColor("Purple")
-            .setDescription("🚀 Melhor otimização para FiveM")
+            .setDescription("🚀 Melhor otimização para FiveM Por apenas 10 Reais")
         ],
         components: [
           new ActionRowBuilder().addComponents(
