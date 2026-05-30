@@ -36,7 +36,6 @@ const CATEGORIA_ID = "1466619720487800845";
 const CANAL_RECENTES = "1494137996612472943";
 const CANAL_RANK = "1490184769831698655";
 const CANAL_LOGS = "1488589113954271282";
-const CARGO_CLIENTE = "1494143094327742594";
 
 const IMG = "https://cdn.discordapp.com/attachments/1373392385014370334/1497072312413851790/1294723.webp";
 
@@ -53,9 +52,7 @@ let db = {
   pix: {},
   entregues: {},
   vendas: {},
-  rankMsg: null,
-  cooldown: {},
-  blacklist: {}
+  rankMsg: null
 };
 
 if (fs.existsSync("dados.json")) {
@@ -63,7 +60,10 @@ if (fs.existsSync("dados.json")) {
 }
 
 function salvar() {
-  fs.writeFileSync("dados.json", JSON.stringify(db, null, 2));
+  fs.writeFileSync(
+    "dados.json",
+    JSON.stringify(db, null, 2)
+  );
 }
 
 const mp = new MercadoPagoConfig({
@@ -165,8 +165,11 @@ client.once("ready", async () => {
 });
 
 function contaGtaRandom() {
+
   return CONTAS_GTA[
-    Math.floor(Math.random() * CONTAS_GTA.length)
+    Math.floor(
+      Math.random() * CONTAS_GTA.length
+    )
   ];
 }
 
@@ -550,6 +553,58 @@ client.on("interactionCreate", async (i) => {
         ]
       });
 
+      setTimeout(async () => {
+
+        try {
+
+          const canalExiste =
+            await client.channels
+              .fetch(canal.id)
+              .catch(() => null);
+
+          if (!canalExiste) return;
+
+          await canal.send(
+            `⚠️ <@${userId}> faltam apenas 2 minutos para o ticket expirar.`
+          );
+
+        } catch {}
+
+      }, 10 * 60 * 1000);
+
+      setTimeout(async () => {
+
+        try {
+
+          const canalExiste =
+            await client.channels
+              .fetch(canal.id)
+              .catch(() => null);
+
+          if (!canalExiste) return;
+
+          if (db.tickets[userId]) {
+
+            delete db.tickets[userId];
+
+            salvar();
+
+            await canal.send(
+              `⌛ Ticket expirado. Fechando em 5 segundos...`
+            );
+
+            setTimeout(async () => {
+
+              await canal.delete()
+                .catch(() => {});
+
+            }, 5000);
+          }
+
+        } catch {}
+
+      }, 12 * 60 * 1000);
+
       await i.editReply(
         `✅ Ticket criado: ${canal}`
       );
@@ -640,9 +695,19 @@ ${entrega}`
             .fetch(canalId)
             .catch(() => null);
 
-        if (canal)
-          await canal.delete()
-            .catch(() => {});
+        if (canal) {
+
+          await canal.send(
+            `✅ Pagamento aprovado! Produto entregue na DM.`
+          );
+
+          setTimeout(async () => {
+
+            await canal.delete()
+              .catch(() => {});
+
+          }, 5000);
+        }
 
         delete db.tickets[userId];
         salvar();
@@ -695,6 +760,7 @@ R$${produto.preco}
       await atualizarRank();
 
     } catch (e) {
+
       console.log(
         "ERRO WEBHOOK:",
         e
