@@ -746,17 +746,98 @@ R$${produto.preco}
       }
 
       const logs =
-        await client.channels
-          .fetch(CANAL_LOGS)
-          .catch(() => null);
+  await client.channels
+    .fetch(CANAL_LOGS)
+    .catch(() => null);
 
-      if (logs) {
+if (logs) {
 
-        await logs.send(
-          `✅ Compra | ${userId} | ${produto.nome}`
-        );
+  const dataCompra = new Date().toLocaleString(
+    "pt-BR",
+    {
+      timeZone: "America/Sao_Paulo"
+    }
+  );
+
+  const comprador =
+    pg.payer?.first_name ||
+    pg.payer?.last_name
+      ? `${pg.payer?.first_name || ""} ${pg.payer?.last_name || ""}`.trim()
+      : "Não informado";
+
+  const banco =
+    pg.payment_method_id ||
+    pg.payment_type_id ||
+    "PIX";
+
+  const embedLogs = new EmbedBuilder()
+
+    .setTitle("🛒 NOVA VENDA")
+
+    .setColor("Green")
+
+    .setThumbnail(
+      "https://cdn-icons-png.flaticon.com/512/3081/3081559.png"
+    )
+
+    .addFields(
+
+      {
+        name: "👤 Comprador",
+        value:
+          `${comprador}\n<@${userId}>`,
+        inline:false
+      },
+
+      {
+        name:"🆔 ID Discord",
+        value:userId,
+        inline:true
+      },
+
+      {
+        name:"📦 Produto",
+        value:produto.nome,
+        inline:true
+      },
+
+      {
+        name:"💰 Valor",
+        value:`R$${produto.preco}`,
+        inline:true
+      },
+
+      {
+        name:"🏦 Banco / Método",
+        value:banco,
+        inline:true
+      },
+
+      {
+        name:"📅 Data e Hora",
+        value:dataCompra,
+        inline:true
+      },
+
+      {
+        name:"💳 Payment ID",
+        value:String(paymentId),
+        inline:false
       }
 
+    )
+
+    .setFooter({
+      text:"Sistema automático"
+    })
+
+    .setTimestamp();
+
+  await logs.send({
+    embeds:[embedLogs]
+  });
+
+}
       await atualizarRank();
 
     } catch (e) {
