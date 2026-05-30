@@ -759,11 +759,13 @@ if (logs) {
     }
   );
 
-  const comprador =
-    pg.payer?.first_name ||
-    pg.payer?.last_name
-      ? `${pg.payer?.first_name || ""} ${pg.payer?.last_name || ""}`.trim()
-      : "Não informado";
+ const comprador =
+(
+  pg.payer?.first_name ||
+  pg.payer?.last_name
+)
+? `${pg.payer?.first_name || ""} ${pg.payer?.last_name || ""}`.trim()
+: "Não informado";
 
   const banco =
     pg.payment_method_id ||
