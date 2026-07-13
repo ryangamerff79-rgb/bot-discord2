@@ -83,7 +83,7 @@ const PRODUTOS = {
   opt10: {
     nome: "Otimização Avançada",
     preco: 10,
-    link: "https://www.mediafire.com/file/iidtoou88ozkwll/OTIMIZA2.rar"
+    link: "https://www.mediafire.com/file/t7knt8i0n2zhjg6/otimiza%25C3%25A7%25C3%25B5es_diddy.rar/file"
   },
 
   opt20: {
