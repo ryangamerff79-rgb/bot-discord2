@@ -83,19 +83,19 @@ const PRODUTOS = {
   opt10: {
     nome: "Otimização Avançada",
     preco: 10,
-    link: "https://www.mediafire.com/file/ys8u5olbpzxzsbq/AVANÇADA.rar/file"
+    link: "https://www.mediafire.com/file/tp3frlm67pong3i/OTIMIZA%25C3%2587%25C3%2583O_AVAN%25C3%2587ADA.rar/file"
   },
 
   opt20: {
     nome: "Otimização Suprema",
     preco: 20,
-    link: "https://www.mediafire.com/file/61ivdjr64yb9o6t/OTIMIZA3.rar"
+    link: "https://www.mediafire.com/file/ykunopwmhkmye1z/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file"
   },
 
   omega: {
     nome: "Otimização Omega",
     preco: 35,
-    link: "https://www.mediafire.com/file/5mambx2ewnpy3jl/OMEGA+PACk.rar/file"
+    link: "https://www.mediafire.com/file/oklu2dec9o0dk70/OMEGA_PACK.rar/file"
   },
 
   sensi: {
@@ -108,7 +108,7 @@ const PRODUTOS = {
   fivem: {
     nome: "Pack FiveM",
     preco: 10,
-    link: "https://www.mediafire.com/file/5yirnjceinkjoaf/fivem.rar",
+    link: "https://www.mediafire.com/file/jo8wbg6d5llua2j/FIVEM_BOOST.rar/file",
     imagem: EMBED_FIVEM
   },
 
