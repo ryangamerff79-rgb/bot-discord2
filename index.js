@@ -89,13 +89,13 @@ const PRODUTOS = {
   opt20: {
     nome: "Otimização Suprema",
     preco: 20,
-    link: "https://www.mediafire.com/file/ykunopwmhkmye1z/OTIMIZI%25C3%2587%25C3%2583O_SUPREMA.rar/file"
+    link: "https://www.mediafire.com/file/qonfhhdpw2cv2dp/OTIMIZAÇÃO+SUPREMA.rar/file"
   },
 
   omega: {
     nome: "Otimização Omega",
     preco: 35,
-    link: "https://www.mediafire.com/file/oklu2dec9o0dk70/OMEGA_PACK.rar/file"
+    link: "https://www.mediafire.com/file/dlrwhlg55bs24yd/OMEGA+PACK.rar/file"
   },
 
   sensi: {
